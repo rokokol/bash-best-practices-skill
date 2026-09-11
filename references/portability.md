@@ -96,7 +96,7 @@ The first cost every `falsify` mutant on macOS: the edit written was `"if false"
 ```sh
 # on a macOS runner, from templates/github/workflows/macos.yml
 /bin/bash ./check.sh behaviour     # not `env bash`, which finds Homebrew's 5
-# locally, the interpreter only — the image's userland is busybox, not BSD
+# locally, before pushing
 docker run --rm -v "$PWD":/w -w /w -e CHECK_BASH32=1 bash:3.2 bash ./check.sh behaviour
 ```
 

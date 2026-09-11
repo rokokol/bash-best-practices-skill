@@ -246,6 +246,7 @@ check_behaviour() {
   refuses "-n with no name" "-n needs a name" templates/script.sh -n
   refuses "-e with no prefix" "-e needs a prefix" templates/script.sh -e
   refuses "-d with no document" "-d needs a document" templates/script.sh -d
+  refuses "-m with no document" "-m needs a document" templates/script.sh -m
   refuses "-c with one file" "-c needs two files" templates/script.sh -c templates/completions/script.sh.bash
   refuses "a document it cannot read" "cannot read" -d "$work/not-a-doc.md" templates/script.sh
   refuses "a script with nothing to check" "nothing to check" tests/fixtures/nothing-to-check.sh
@@ -268,7 +269,7 @@ check_behaviour() {
     if out=$("$BASH" "$work/neutered.sh" templates/script.sh 2>&1); then
       fail "check-sh.sh with '$fragment' silenced passed its own self-test — the self-test does not prove that check"
     fi
-    [[ "$out" == *"a copy with $what passed"* ]] ||
+    [[ "$out" == *"a copy with $what"*" passed"* ]] ||
       fail "check-sh.sh with '$fragment' silenced failed for a reason other than its own: $out"
   }
   neutered "dispatches '\$s' but its help never mentions" "a subcommand missing from the help"
@@ -276,7 +277,9 @@ check_behaviour() {
   neutered "exits \$n but its help never lists" "an exit code missing from the help"
   neutered "never names \$name \$s" "a document that lost a subcommand"
   neutered "is offered by a completion but not parsed" "a completion offering a flag that is not parsed"
-  neutered "claims bash 3.2 but" "a bash 4 construct under a 3.2 claim"
+  # Two plants lean on the proxy — a 3.2 claim in the canonical script and in a plain one —
+  # and whichever the self-test reaches first is the one that has to notice
+  neutered "claims bash 3.2 but" "a bash 4 construct"
   # And the count of planted defects the summary reports is the count the self-test runs:
   # a lost row would lower it while everything stayed green
   summary=$(checker templates/script.sh 2>&1 | tail -n 1)

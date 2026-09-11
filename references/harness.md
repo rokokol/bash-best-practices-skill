@@ -55,7 +55,7 @@ e499e4fe:refs/heads/master
 
 ## Rules
 
-**Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, the probe is `docker run --rm bash:3.2 bash -c '…'`, whose userland is busybox rather than BSD, so it settles the interpreter and nothing else ([portability.md](portability.md))
+**Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, and what a local probe of it can and cannot settle, see [portability.md](portability.md#the-proxy-is-labelled-the-proof-is-a-run)
 
 **Judge a script by its shebang, not by the shell that invoked it, and run it as a file rather than pasting its body into the tool.** A file beginning `#!/usr/bin/env bash` is bash whatever the agent is typing into, so "it failed in my shell" is not a finding about the script and "it worked in my shell" is not a pass ([shape.md](shape.md)). Pasting reinterprets every line under zsh and loses the whole class of differences above, along with `$0`, `BASH_SOURCE`, the header the help is extracted from and the `set -euo pipefail` the file opens with — `bash ./script.sh args` is the honest invocation, and `"$BASH" ./script.sh` inside a gate keeps nested runs on the interpreter the gate is proving (`tests/check.sh:42-45`)
 

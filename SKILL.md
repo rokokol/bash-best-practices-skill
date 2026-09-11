@@ -15,7 +15,7 @@ The core below is what every script of the family shares, and each rule names th
 ## Doing the work
 
 - **Start a new script from `./check-sh.sh --template > NAME.sh`**, which is the shape below already assembled; `--template bash` and `--template zsh` print its two completions
-- **End every change with `./check-sh.sh NAME.sh`**, plus `-d DOC` for each document that names its subcommands and `-c BASH ZSH` where completions exist; a repository's gate runs the same line
+- **End every change with `./check-sh.sh NAME.sh`**, plus `-d DOC` for each document that lists its subcommands, `-m DOC` for each that only mentions some, and `-c BASH ZSH` where completions exist; a repository's gate runs the same line
 - **Start a review with that same run**, and read for what the checker cannot see: the why in the comments, the reason beside a bash floor, which stream each line goes to
 - **Read an unfamiliar script through `NAME.sh help [SUB]` before calling it**, because a command guessed from documentation is a command nobody checked
 
@@ -42,11 +42,12 @@ Following the letter of a rule while breaking its point is breaking the rule; th
 | `check-sh.sh SCRIPT` | the help to the dispatcher, the parsers and the exit codes, both ways; the header's bash 3.2 claim to a proxy grep |
 | `check-sh.sh -n NAME SCRIPT` | the same, with NAME as what the help, the docs and the completions call the script when it is not the file's basename |
 | `check-sh.sh -e PREFIX SCRIPT` | every `PREFIX_*` variable the script reads to the help |
-| `check-sh.sh -d DOC SCRIPT` | a document's `NAME sub` mentions and the flags it attaches to them, both ways; repeatable |
+| `check-sh.sh -d DOC SCRIPT` | a document that lists the subcommands: every one named, every `NAME sub` it spells real, with the flags it attaches; repeatable |
+| `check-sh.sh -m DOC SCRIPT` | a document that mentions a few and sends the reader to the help: every mention real, no list demanded; repeatable |
 | `check-sh.sh -c BASH ZSH SCRIPT` | the two completion files to the dispatcher and the parsers, both ways |
 | `check-sh.sh --template [script\|bash\|zsh]` | prints the canonical script, or its completions, which are what the checker plants its defects into |
 
-Exit 0 when everything agrees, 1 with one line per finding, 2 when it was asked wrongly or there is nothing to check — a script with neither a dispatcher nor a flag arm is refused rather than passed. A wrapper whose `*)` arm forwards the word to another tool says so with the comment `# pass-through` inside the arm; its subcommand set is then open, and its help and documents may name that tool's commands. [references/help.md](references/help.md) says what a help must contain for the checker to read it
+Exit 0 when everything agrees, 1 with one line per finding, 2 when it was asked wrongly or there is nothing to check — a script with neither a dispatcher nor a flag arm is refused rather than passed, unless its header claims bash 3.2, when the proxy grep is what runs. A wrapper whose `*)` arm forwards the word to another tool says so with the comment `# pass-through` inside the arm; its subcommand set is then open, and its help and documents may name that tool's commands. [references/help.md](references/help.md) says what a help must contain for the checker to read it
 
 ## Taking the checker into another repository
 
