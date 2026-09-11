@@ -78,6 +78,19 @@ exit=1
 
 The first is worse than the second: exit 0, and a screen of help where a trimmed `--help` was expected. **Trim with `tr -s '[:space:]' ' '` and a pair of `${s# }`/`${s% }`** — `printf '  a  b  ' | tr -s '[:space:]' ' '` gives `[ a b ]`, no subprocess and no surprises
 
+**`IFS=$'\t' read` drops an empty field, because a tab is IFS white space.** POSIX puts space, tab and newline in one class, a run of them is a single delimiter and a leading or trailing run delimits nothing; only an IFS character outside that class, such as `,`, delimits an empty field. An empty column of a tab-separated line therefore vanishes and every column after it moves one to the left — the same in bash 5.3, bash 3.2 and zsh:
+
+```console
+$ printf 'a\t\tc\n' | { IFS=$'\t' read -r x y z; printf '[%s][%s][%s]\n' "$x" "$y" "$z"; }
+[a][c][]
+$ printf 'a,,c\n' | { IFS=, read -r x y z; printf '[%s][%s][%s]\n' "$x" "$y" "$z"; }
+[a][][c]
+$ printf 'a\t\tc\n' | awk -F '\t' '{ printf "[%s][%s][%s]\n", $1, $2, $3 }'
+[a][][c]
+```
+
+It hides while the empty fields are the last ones on the line and surfaces the day a column is added after them: in the contributing skill's `contrib.sh`, a new column slid into an empty "last seen" field and made new items look already marked (measured there 2026-09-11). **Never emit an empty tab-separated field — `jq`'s `// "-"` gives it a placeholder — or split the line with `awk -F '\t'`**, which does not fold (gawk and busybox awk measured)
+
 ## The interpreter
 
 **bash reads a script while it runs, so an in-place rewrite lands mid-execution.** The running copy reads on from the byte offset it had reached, and in a truncated file there is nothing there:
@@ -114,6 +127,18 @@ exit=1
 **Judge `grep` by what it says, not by its status.** A regex `grep` cannot compile is not a uniform failure: GNU and BSD `grep` exit 2, busybox's does not compile it until there is a line to match, and all of them complain on stderr once it does. An excuse-list regex applied with `grep -Ev` and judged by status left the filtered log empty, an empty log has no findings, and every run reported a pass (`tests/t.sh:260-265`, `tests/CHANGELOG.md:28`). Feed the probe a line of input rather than `/dev/null`, capture stderr, and treat a complaint as the answer
 
 **An undefined `awk` escape is noise, not a difference.** `\ ` for a space is undefined by POSIX and it is tempting to read that as a portability defect: gawk, mawk, busybox awk, goawk and the one-true-awk macOS ships were each run over the four shapes the pattern had to read, and all five agree it is a space (`tests/pitfalls.md:33-35`). The real cost was twenty-nine warnings on stderr in a run ending `check: everything holds`. Fix it for the noise, and do not invent a portability story that measurement does not support — the same discipline that keeps the bash floor honest in [portability.md](portability.md). **An `exit N` inside an `awk` program is awk's status, not the script's**, which is why `check-sh.sh` counts only bash-shaped ones — `exit N` followed by `;`, end of line, `&&` or `||` — and leaves `{ exit 1 }` alone: `t.sh:657` ends its awk program that way to say "no table found", and the shell's own code for that case is the `die` on the line that reads the substitution
+
+**`awk -v` runs escape processing over the value, so a regex passed that way loses its backslashes.** POSIX reads a `-v` value as if it stood between double quotes in the program, so `\t` turns into a tab in every awk measured, and `\.` — an escape POSIX leaves undefined — turns into a plain `.` in gawk, busybox awk and the one-true-awk macOS ships, while mawk keeps the backslash. Here the undefined escape of the entry above does change the answer:
+
+```console
+$ awk -v re='a\.b' 'BEGIN { print ("axb" ~ re) }'
+awk: warning: escape sequence `\.' treated as plain `.'
+1
+$ RE='a\.b' awk 'BEGIN { print ("axb" ~ ENVIRON["RE"]) }'
+0
+```
+
+The dot now matches any character, and the only trace is gawk's warning on stderr — the one-true-awk and busybox print none — so a suite that reads stdout alone sees a pattern that quietly matches too much. **Hand data to awk through the environment and read `ENVIRON["NAME"]`**: POSIX makes each element the variable's value as it is, all four awks agree, and `check-sh.sh` plants its defects that way (`check-sh.sh:651,655`) after a `-v` pass mangled the backslashes of a planted line. A gate that runs awk over its own patterns can also require a clean run to leave stderr empty, which is how the contributing skill's gate now catches it
 
 ## Next
 

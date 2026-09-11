@@ -11,6 +11,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 - `check-sh.sh --template`, `--template bash` and `--template zsh` print the canonical script and its two completions — the same text the checker plants its defects into — and `templates/` is held byte-equal to that output by the gate, so the skeleton a new script starts from and the shape the checker proves are one file
 - `templates/github/workflows/macos.yml`, the workflow a repository takes when one of its scripts claims bash 3.2: the behaviour half of its gate under the real `/bin/bash` on a macOS runner, with two constructs planted that only a 3.2 rejects, as its own file so the claim gets its own badge
 - the gate, `check.sh`, in two halves: `lint` for the scripts, workflows, flake, docs and templates under the pinned dev shell, and `behaviour` for the checker itself, which needs only bash and runs under 3.2 — locally through the `bash:3.2` image, in CI on macOS. It silences one of the checker's findings at a time and requires the checker's own self-test to notice, so the proof is proven
+- two pitfalls the contributing skill paid for and this one re-measured: `IFS=$'\t' read` drops an empty field, because a tab is IFS white space, in bash 3.2, bash 5.3 and zsh alike; and `awk -v` runs escape processing over its value, so a regex passed that way loses its backslashes in gawk, busybox awk and the one-true-awk macOS ships, while `ENVIRON` passes it through untouched
 
 ### Changed
 
