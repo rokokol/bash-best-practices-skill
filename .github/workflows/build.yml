@@ -1,0 +1,34 @@
+name: ci
+
+# Nothing here reaches a mirror, a :latest image or a live site, so it is a gate rather
+# than a detector and pull requests run it too
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  # Called by vendor-sync.yml against its temp branch, so new vendored copies are checked by
+  # this file rather than by a copy of its commands
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: cachix/install-nix-action@v31
+      # The pin guard lives in check-pins.sh, run by the gate, and nowhere else: a second
+      # copy of the pattern here would drift from the one there
+      - name: check.sh (the gate, self-tested against known-bad inputs)
+        run: nix develop --no-write-lock-file -c ./check.sh
