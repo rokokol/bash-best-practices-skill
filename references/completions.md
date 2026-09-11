@@ -50,4 +50,4 @@ Falsify it once, when wiring it into a repository: plant a fake flag in a copy o
 
 ## Next
 
-The help is the truth these two files mirror, and what it must list — subcommands, flags, variables, exit codes — is [help.md](help.md). The dispatcher and parser shapes the checker reads out of the script are [shape.md](shape.md); the linting the bash half goes through, and what the zsh half is exempt from, is [lint.md](lint.md); why `mapfile` and `compopt` are the two builtins these files do without is [portability.md](portability.md), with every manual and NEWS entry behind the rules above in [sources.md](sources.md)
+The help is the truth these two files mirror, and what it must list is [help.md](help.md); the manual pages behind the two dialects are in [sources.md](sources.md#completions)

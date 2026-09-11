@@ -163,6 +163,14 @@ check_lint() {
   [[ "$(full_stopped "$work/stopped.md" | wc -l)" -eq 3 ]] ||
     fail "the full-stop check missed a full stop, bare or behind markup"
 
+  echo "== the readme's layout block is SKILL.md's, byte for byte"
+  # The readme restates the layout for a person reading on GitHub, and a restated list
+  # drifts: the two differed by one phrase within a day of being written
+  layout_of() { awk '/^## Layout$/ { on = 1; next } on && /^```$/ { if (seen) exit; seen = 1; next } on && seen { print }' "$1"; }
+  [[ -n "$(layout_of SKILL.md)" ]] || fail "no layout block could be read from SKILL.md — the comparison below would pass on nothing"
+  [[ "$(layout_of SKILL.md)" == "$(layout_of README.md)" ]] ||
+    fail "README.md's layout block differs from SKILL.md's — one of them drifted"
+
   echo "== SKILL.md loads, every reference is reachable, and every link and anchor resolves"
   # The one gate every skill repository shares, vendored from the ci skill. It proves each
   # of its own checks able to fail on every run, so nothing here has to
@@ -181,15 +189,10 @@ check_behaviour() {
   # spell flags it parses
   checker -d SKILL.md -d README.md check-sh.sh
   checker -e SCRIPT_ -c templates/completions/script.sh.bash templates/completions/_script.sh templates/script.sh
-  for s in check-skill.sh check-pins.sh check-changelog.sh; do checker "$s"; done
-  # vendor-sync.sh is red today, for a real reason the checker exists to find: its
-  # dispatcher spells the help arm `-h | --help)` without `help`. The fix belongs at its
-  # source in rokokol/ci-skill, and until the cascade brings it here this line is the
-  # proof that the checker reads a real script rather than only its own fixture. When it
-  # goes green, move vendor-sync.sh into the loop above
-  out=$(checker vendor-sync.sh 2>&1) && fail "vendor-sync.sh passed — its source gained the help arm, so move it into the loop above"
-  [[ "$out" == *"has no -h | --help | help arm"* ]] ||
-    fail "vendor-sync.sh was rejected for a reason other than its missing help arm: $out"
+  # vendor-sync.sh was red on the checker's first run, for a real reason: its dispatcher
+  # spelled the help arm `-h | --help)` without `help`. The fix went to its source in
+  # rokokol/ci-skill and the cascade brought it here, which is how a copy is meant to change
+  for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checker "$s"; done
 
   echo "== the proxy catches every construct in the fixture under a 3.2 claim, and none without"
   # The constructs live in a fixture rather than inline here, because spelling them in

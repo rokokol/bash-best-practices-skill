@@ -67,4 +67,4 @@ e499e4fe:refs/heads/master
 
 ## Next
 
-The shape that makes any of this hold is [shape.md](shape.md), what a script's `--help` must say is [help.md](help.md), the version floors behind the `bash -c` probes are [portability.md](portability.md), the measured traps that are not the harness's are [pitfalls.md](pitfalls.md), and the completion and linter rules are [completions.md](completions.md) and [lint.md](lint.md), with every manual in [sources.md](sources.md). What makes a green run mean something belongs to the [tests](https://github.com/rokokol/tests-skill) skill, what gates a pull request to the [ci](https://github.com/rokokol/ci-skill) skill, and the installer these scripts ship inside to [huix-standard](https://github.com/rokokol/huix-standard-skill)
+The version floors behind the `bash -c` probes are in [portability.md](portability.md), and the zsh manual pages behind the measurements above in [sources.md](sources.md#the-harness)

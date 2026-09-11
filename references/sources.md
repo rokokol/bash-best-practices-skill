@@ -50,6 +50,20 @@ The ruling "2 for a usage error everywhere" is a survey, not a preference — wh
 - [ShellCheck SC2251](https://www.shellcheck.net/wiki/SC2251) — "this `!` is not on a condition and skips errexit"; [SC2016](https://www.shellcheck.net/wiki/SC2016) — "expressions don't expand in single quotes, use double quotes for that", the finding a script that writes shell keeps hitting on purpose; [SC2100](https://www.shellcheck.net/wiki/SC2100) — "use `$((..))` for arithmetics", because `i=i+2` assigns the string; [SC2207](https://www.shellcheck.net/wiki/SC2207) — "prefer `mapfile` or `read -a` to split command output (or quote to avoid splitting)", whose first suggestion this family declines on the 3.2 floor and answers with the read loop
 - [shfmt, in mvdan/sh](https://github.com/mvdan/sh) — the formatter, whose opinion is versioned, so a bump and the reformat it causes are one commit. Its flags live in [shfmt.1.scd](https://github.com/mvdan/sh/blob/master/cmd/shfmt/shfmt.1.scd) rather than in the README: `-i` is "0 for tabs (default), >0 for number of spaces", `-ci` is "switch cases will be indented", and `-d` is "error with a diff when the formatting differs"
 
+## The repositories the path:line citations point into
+
+Every `path:line` in the references above is a real file at the revision it was read at, 2026-09-11. Line numbers drift, so a citation is a pointer to a story rather than an address to trust, and the story is retold in full where it is cited
+
+| Cited as | Repository |
+|---|---|
+| `t.sh`, `tests/check.sh`, `tests/PITFALLS.md`, `tests/references/…`, `tests/CHANGELOG.md` | the [tests](https://github.com/rokokol/tests-skill) skill |
+| `ci.sh`, `ci/check-templates.sh`, `ci/references/…` | the [ci](https://github.com/rokokol/ci-skill) skill |
+| `install-sh.md`, `huix-standard/…` | the [huix-standard](https://github.com/rokokol/huix-standard-skill) skill |
+| `versioning/check.sh`, `versioning/check-changelog.sh` | the [versioning](https://github.com/rokokol/versioning-skill) skill |
+| `obsi.sh`, `obsidian-cli/…` | the [obsidian-cli](https://github.com/rokokol/obsidian-cli-skill) skill |
+| `check-skill.sh`, `check-pins.sh`, `check-changelog.sh`, `vendor-sync.sh` | the vendored copies beside SKILL.md in this repository |
+| `screen-shader.sh`, `rofi-wooordhunt/…`, `papers`, `MolvAI`, `3x-ui install.sh` | private or third-party; nothing here depends on reading them |
+
 ## Adjacent skills, read and not depended on
 
 While this skill was being written, three public bash skills for coding agents were read for ideas — [Nissoh25/claude-skill-bash](https://github.com/Nissoh25/claude-skill-bash), the bash-scripting skill in [mindrally/skills](https://github.com/mindrally/skills) and the bash skill in [bentsolheim/public-skills](https://github.com/bentsolheim/public-skills). What was borrowed is stated as a rule in the references above, in this skill's own words; nothing here loads any of them and no rule above rests on one, because a rule that depends on somebody else's repository staying where it was is a rule that can vanish

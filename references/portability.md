@@ -146,4 +146,4 @@ The read loop is `while IFS= read -r line || [[ -n "$line" ]]` with `line="${lin
 
 ## Next
 
-The header line this file is about, and where it sits, are in [shape.md](shape.md); what the help must say about flags and codes is in [help.md](help.md); the pitfalls that are not about portability at all are in [pitfalls.md](pitfalls.md); what changes when the command is typed into the agent's Bash tool rather than into a script is in [harness.md](harness.md). Completions are `sourced` by whatever bash the user has, which on macOS is the same 3.2 — see [completions.md](completions.md). Which findings a linter is allowed to be silenced about is [lint.md](lint.md), and every manual, NEWS entry and man page behind the table is listed in [sources.md](sources.md)
+Every manual, NEWS entry and man page behind the table is listed in [sources.md](sources.md#portability); the traps that are not about the machine at all are in [pitfalls.md](pitfalls.md)

@@ -117,4 +117,4 @@ exit=1
 
 ## Next
 
-The shape these rules assume — the `set` line, the helpers, the dispatcher, the exit codes — is [shape.md](shape.md); what the help owes its reader is [help.md](help.md); the completions held to it are [completions.md](completions.md); the linter doctrine is [lint.md](lint.md); the manuals and wiki pages behind each entry are in [sources.md](sources.md). Whether a check like these would ever notice a regression belongs to the [tests](https://github.com/rokokol/tests-skill) skill, and what gates a pull request to the [ci](https://github.com/rokokol/ci-skill) skill
+The manuals and wiki pages behind each entry are in [sources.md](sources.md#pitfalls); whether a check like these would ever notice a regression belongs to the [tests](https://github.com/rokokol/tests-skill) skill
