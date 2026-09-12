@@ -7,6 +7,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Changed
 
 - `check-sh.sh` reports three things it used to pass: a `${N:?}` guard anywhere in the script's code, which exits 1 with bash's text where a missing argument is a usage error — `t.sh` had twenty-three; a flag a bash completion keeps only as the case pattern that handles its value, which is not offering it; and a bash completion that does not open with `# shellcheck shell=bash`. Each is planted in the self-test, and each plant passed the previous checker
+- `check-sh.sh`'s proxy grep covers the rest of the portability table it is said to be: a negative length `${s:0:-1}`, `exec {fd}<`, a fractional `read -t`, `globstar`, a quoted or `&`-bearing `${x//a/b}` replacement, `sed -i`, `grep --exclude-dir`, `timeout` and the GNU `tar` flags. A `${bare:0:-1}` in a script claiming 3.2 passed it and failed only under the real 3.2; each construct is now a line of the fixture the gate plants. `nproc`, `fold` and `\b` in a `grep` pattern stay outside it, and `references/portability.md` says why
 
 ## 2026-09-11
 
