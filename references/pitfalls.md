@@ -116,7 +116,7 @@ q.sh: line 2: 2: the second argument
 exit=1
 ```
 
-`docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md)
+`docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment: `t.sh` had twenty-three, each answering a mistyped call with the code a failing test exits
 
 **Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever with nothing on screen to say what for — an installer did exactly that on 2026-09-03 (3x-ui `install.sh`). **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
 

@@ -2,6 +2,12 @@
 
 Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), dated rather than numbered, and with no `Unreleased` section — a skill is read at whatever revision you have checked out, so whatever is on the default branch is what everyone already has, and a section for work that has landed but not shipped would never close. The rule lives in the [versioning](https://github.com/rokokol/versioning-skill) skill, which owns what has no version
 
+## 2026-09-12
+
+### Changed
+
+- `check-sh.sh` reports three things it used to pass: a `${N:?}` guard anywhere in the script's code, which exits 1 with bash's text where a missing argument is a usage error — `t.sh` had twenty-three; a flag a bash completion keeps only as the case pattern that handles its value, which is not offering it; and a bash completion that does not open with `# shellcheck shell=bash`. Each is planted in the self-test, and each plant passed the previous checker
+
 ## 2026-09-11
 
 ### Added
