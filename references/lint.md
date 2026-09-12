@@ -24,6 +24,7 @@ A `# shellcheck disable=` comment is a last resort for a rule that is wrong abou
   ```
 
 - **A `disable=` that does survive carries its reason on the same line**, `# shellcheck disable=SC2016 # the ${} are literal, this text becomes the wrapper`. A bare code is an assertion with no argument behind it, and the next reader cannot tell a considered exception from a silenced one
+- **Two things shellcheck reads that look like prose and a pattern.** A comment whose first word is `shellcheck` is a directive: `# shellcheck and shfmt from the flake's dev shell` stopped a whole gate with SC1073 "Couldn't parse this shellcheck directive" and SC1072 (create-readme `tests/check.sh`, 2026-09-12), so such a comment leads with another word. And a `${` inside a single-quoted regex's bracket expression reads as an expansion, SC2016, where no expansion was meant; the rewrite puts `$` after `{`, `[^-A-Za-z0-9_{$]`, as in `check-sh.sh`'s `timeout` pattern
 
 ## The formatter's opinion is versioned, and the bump is a commit
 

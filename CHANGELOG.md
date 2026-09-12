@@ -7,6 +7,8 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Added
 
 - `references/harness.md` records zsh's `NOMATCH`, measured on the harness: an unquoted `*`, `?` or `[…]` that matches no file is an error rather than a word, so a URL with a query string or `find -name *.sh` fails in the agent's shell and passes in bash, and after an external command the line runs on and exits 0 although the command never ran. The core's harness bullet names it, and `references/sources.md` quotes the manual
+- `references/lint.md` names two things shellcheck reads that look like prose and a pattern: a comment whose first word is `shellcheck`, which it parses as a directive and stops on, and a `${` inside a single-quoted regex's bracket expression, which it takes for an expansion, with the rewrite for each
+- `SKILL.md` says how a repository takes `macos.yml`: through `vendor-sync.sh add --manual` when its gate is `./check.sh behaviour`, so the cascade keeps it current, and as an adapted copy when the gate lives elsewhere
 
 ### Changed
 
