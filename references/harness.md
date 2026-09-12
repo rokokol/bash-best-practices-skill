@@ -53,6 +53,26 @@ $ zsh -c 'h=e499e4fe; b=master; echo "${h}:refs/heads/${b}"'
 e499e4fe:refs/heads/master
 ```
 
+**An unquoted `*`, `?` or `[…]` that matches no file is an error, not a word, and after a command that is not a builtin the line runs on without it.** zsh's `NOMATCH` option, on by default and on in this harness, makes such a pattern "print an error, instead of leaving it unchanged in the argument list", where bash passes the text through. A URL with a query string is a pattern, and so is `find . -name *.sh` in a directory with no `.sh` in it. After a builtin such as `echo` the error ends the whole line with 1; after an external command only that command is dropped, the next one runs, and the line exits 0 — `find` never ran, and one line on stderr is all that says so. Quoting is the fix, `-name '*.sh'` and `'https://…?q=1'`:
+
+```console
+$ zsh -c 'echo https://example.com/?q=1'
+zsh:1: no matches found: https://example.com/?q=1
+$ bash -c 'echo https://example.com/?q=1'
+https://example.com/?q=1
+$ zsh -c 'echo pre; find . -maxdepth 0 -name *.nope; echo after'; echo "exit=$?"
+pre
+zsh:1: no matches found: *.nope
+after
+exit=0
+$ zsh -c 'echo *.nope; echo after'; echo "exit=$?"
+zsh:1: no matches found: *.nope
+exit=1
+$ zsh -c 'find . -maxdepth 0 -name "*.nope"; echo after'; echo "exit=$?"
+after
+exit=0
+```
+
 ## Rules
 
 **Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, and what a local probe of it can and cannot settle, see [portability.md](portability.md#the-proxy-is-labelled-the-proof-is-a-run)

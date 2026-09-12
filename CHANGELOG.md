@@ -4,6 +4,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-12
 
+### Added
+
+- `references/harness.md` records zsh's `NOMATCH`, measured on the harness: an unquoted `*`, `?` or `[…]` that matches no file is an error rather than a word, so a URL with a query string or `find -name *.sh` fails in the agent's shell and passes in bash, and after an external command the line runs on and exits 0 although the command never ran. The core's harness bullet names it, and `references/sources.md` quotes the manual
+
 ### Changed
 
 - `check-sh.sh` reports three things it used to pass: a `${N:?}` guard anywhere in the script's code, which exits 1 with bash's text where a missing argument is a usage error — `t.sh` had twenty-three; a flag a bash completion keeps only as the case pattern that handles its value, which is not offering it; and a bash completion that does not open with `# shellcheck shell=bash`. Each is planted in the self-test, and each plant passed the previous checker
