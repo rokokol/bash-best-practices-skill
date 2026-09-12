@@ -58,7 +58,7 @@ Exit: 0 clean, 1 findings printed, 2 a usage error.
 
 - **A short flag always comes with a long one, and never alone.** Users type the short one and read the long one; a short-only flag is unreadable in a script, and a long-only flag is unbearable in a terminal. `-f` exists only where a `--force` exists (`install-sh.md:17`)
 - **A boolean is a single flag that flips the default, not a `--x`/`--no-x` pair.** The installer is declarative — each run converges to exactly the flags given, so dropping a flag undoes it, the way unsetting a Nix option does on rebuild (`install-sh.md:19`). Say that in one sentence in the help, because it is a behaviour change for anyone expecting pairs
-- **A value-taking flag guards explicitly**, `(($# >= 2)) || die "-l needs a directory"`, never `"${2:?value required by $1}"`, for the reason [shape.md](shape.md#exit-codes) gives; the huix-standard template used to prescribe the other form, and was changed rather than followed
+- **A value-taking flag guards explicitly**, `(($# >= 2)) || die "-l needs a directory"`, never `"${2:?value required by $1}"`, for the reason [shape.md](shape.md#exit-codes) gives
 - **An unknown flag prints the usage to stderr and exits 2**, and flags that cannot combine refuse each other by name — `--uninstall` takes no configuration, because an uninstall has no configuration (`install-sh.md:17`)
 - **The fixed core comes first and in this order**: `-h, --help`, then `-v, --version` where the tool has a version, then the repo-specific flags (`install-sh.md:9-15`). The completions offer the same tokens, checked by `check-sh.sh -c` ([completions.md](completions.md))
 
