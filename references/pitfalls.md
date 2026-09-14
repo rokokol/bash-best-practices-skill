@@ -4,7 +4,7 @@ Traps that cost a debugging session each, in bash itself and in the tools a scri
 
 ## Signals and background jobs
 
-**A background job started without job control has INT and QUIT set to ignore, and so does everything it spawns.** POSIX asks for that in a non-interactive shell, so a script that tests signal handling reports nothing at all off the foreground, and a watchdog cannot kill the tree it started — which on macOS, with no GNU `timeout`, is every watchdog (`tests/t.sh:974-976`). `set -m` gives each job its own process group and the default dispositions back; sixteen copies of a gate started with a plain `&` failed identically on a probe asserting 130, and the same sixteen under `set -m` were all clean (`tests/pitfalls.md:5-9`):
+**A background job started without job control has INT and QUIT set to ignore, and so does everything it spawns.** POSIX asks for that in a non-interactive shell, so a script that tests signal handling reports nothing at all off the foreground, and a watchdog cannot kill the tree it started — which on macOS, with no GNU `timeout`, is every watchdog. `set -m` gives each job its own process group and the default dispositions back:
 
 ```console
 $ bash -c 'p(){ sh -c "kill -INT \$\$"; echo "child exit=$?"; }; echo -n "plain &: "; p & wait; set -m; echo -n "set -m:  "; p & wait'
@@ -21,7 +21,7 @@ EXIT-trap-ran
 exit=130
 ```
 
-So a copy planted to prove that the INT handler restores a file passes with the restore stripped from INT alone, because EXIT restores it instead — take the cleanup off every trap, or the test proves nothing (`tests/pitfalls.md:25-27`). The handler must also die rather than return: one that returns lets the loop carry on to the next item, and the interrupted one vanishes from the report (`tests/CHANGELOG.md`, "Ctrl-C did not stop `falsify`")
+So a copy planted to prove that the INT handler restores a file passes with the restore stripped from INT alone, because EXIT restores it instead — take the cleanup off every trap, or the test proves nothing. The handler must also die rather than return: one that returns lets the loop carry on to the next item, and the interrupted one vanishes from the report
 
 **`pkill -f PATTERN` matches the script's own command line.** The script was passed that string, or interpolated it into the pattern, so its argv holds it and `pkill` kills the caller along with the target:
 
@@ -36,7 +36,7 @@ still alive
 exit=0
 ```
 
-Nothing after the `pkill` runs, the cleanup is skipped, and the caller sees a signal death rather than a failure — observed as exit 144 out of a whole tool chain on 2026-09-10, because every ancestor carrying the token died too, the agent's own shell included while this was being measured. **Kill by PID, or filter `$$` out of `pgrep -f`**
+Nothing after the `pkill` runs, the cleanup is skipped, and the caller sees a signal death rather than a failure; every ancestor carrying the token can die too, including the agent's own shell. **Kill by PID, or filter `$$` out of `pgrep -f`**
 
 **`pgrep -x` cannot see a program whose name is longer than 15 characters**, because `comm` is the kernel's truncated copy of it. `procps` says so rather than answering "no such process", which is the only mercy here:
 
@@ -63,7 +63,7 @@ $ while IFS= read -r f; do cat </dev/null >/dev/null; echo "visited $f"; done < 
 3
 ```
 
-No error, no warning, just an early end and a plausible result for the first item. The same measured against a real CLI: 1296 lines in, 1 answer out, 3 ms instead of 1.5 s (`obsidian-cli/references/pitfalls.md:60-79`). **Give every call inside such a loop `</dev/null`** unless it is deliberately being fed, and the same for `xargs` and `find -exec … \;`
+No error, no warning, just an early end and a plausible result for the first item. **Give every call inside such a loop `</dev/null`** unless it is deliberately being fed, and the same for `xargs` and `find -exec … \;`
 
 **`| xargs` as a whitespace trim runs `echo` and strips quotes.** It looks like a trim with no dependencies and it is two mines: `xargs` with no command runs `echo`, so anything option-shaped is read as a flag by that `echo`, and `xargs` applies its own quoting rules to the input:
 
@@ -89,7 +89,7 @@ $ printf 'a\t\tc\n' | awk -F '\t' '{ printf "[%s][%s][%s]\n", $1, $2, $3 }'
 [a][][c]
 ```
 
-It hides while the empty fields are the last ones on the line and surfaces the day a column is added after them: in the contributing skill's `contrib.sh`, a new column slid into an empty "last seen" field and made new items look already marked (measured there 2026-09-11). **Never emit an empty tab-separated field — `jq`'s `// "-"` gives it a placeholder — or split the line with `awk -F '\t'`**, which does not fold (gawk and busybox awk measured)
+It hides while the empty fields are the last ones on the line and surfaces when a column is added after them, shifting every later value left. **Never emit an empty tab-separated field — `jq`'s `// "-"` gives it a placeholder — or split the line with `awk -F '\t'`**, which does not fold
 
 ## The interpreter
 
@@ -105,7 +105,7 @@ line 2
 line 4
 ```
 
-Line 4 simply vanished. **Any updater that touches a script — a vendoring cascade, an installer, a self-update — writes a new file and `mv`s it over the old one**, which is why `vendor-sync.sh` replaces a copy rather than rewriting it, its own file included (`ci/references/bump-cascade.md:38`)
+Line 4 simply vanished. **Any updater that touches a script — a vendoring cascade, an installer, a self-update — writes a new file and `mv`s it over the old one**
 
 **`${2:?message}` exits 1 with bash's message, not the script's.** It reads like an argument check and it is a different contract: 1 is this family's code for "the thing asked about is wrong", a usage error is 2, and the text names the parameter by number rather than the tool by name:
 
@@ -116,17 +116,17 @@ q.sh: line 2: 2: the second argument
 exit=1
 ```
 
-`docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment: `t.sh` had twenty-three, each answering a mistyped call with the code a failing test exits
+`docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment
 
-**Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever with nothing on screen to say what for — an installer did exactly that on 2026-09-03 (3x-ui `install.sh`). **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
+**Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever. **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
 
 ## The tools around it
 
-**shellcheck sees every local in a file at once**, so a name used as an array in one function and as a scalar in another is a mistake to it, and the warning points at the *other* use, which is why it reads as unrelated. Adding one subcommand to `t.sh` cost three renames on that alone — `set` shadowed the builtin, `first` was a scalar elsewhere, `cmd` was the dispatcher's own variable at the bottom of the file (`tests/pitfalls.md:21-23`). Pick names nothing else in the file uses, and run `shellcheck` before running anything else ([lint.md](lint.md))
+**shellcheck sees every local in a file at once**, so a name used as an array in one function and as a scalar in another is a mistake to it, and the warning points at the *other* use, which is why it reads as unrelated. Pick names nothing else in the file uses, and run `shellcheck` before running anything else ([lint.md](lint.md))
 
-**Judge `grep` by what it says, not by its status.** A regex `grep` cannot compile is not a uniform failure: GNU and BSD `grep` exit 2, busybox's does not compile it until there is a line to match, and all of them complain on stderr once it does. An excuse-list regex applied with `grep -Ev` and judged by status left the filtered log empty, an empty log has no findings, and every run reported a pass (`tests/t.sh:260-265`, `tests/CHANGELOG.md:28`). Feed the probe a line of input rather than `/dev/null`, capture stderr, and treat a complaint as the answer
+**Judge `grep` by what it says, not by its status.** A regex `grep` cannot compile is not a uniform failure: GNU and BSD `grep` exit 2, busybox's does not compile it until there is a line to match, and all of them complain on stderr once it does. A broken exclusion regex can leave the filtered log empty, making a later scan report no findings. Feed the probe a line of input rather than `/dev/null`, capture stderr, and treat a complaint as the answer
 
-**An undefined `awk` escape is noise, not a difference.** `\ ` for a space is undefined by POSIX and it is tempting to read that as a portability defect: gawk, mawk, busybox awk, goawk and the one-true-awk macOS ships were each run over the four shapes the pattern had to read, and all five agree it is a space (`tests/pitfalls.md:33-35`). The real cost was twenty-nine warnings on stderr in a run ending `check: everything holds`. Fix it for the noise, and do not invent a portability story that measurement does not support — the same discipline that keeps the bash floor honest in [portability.md](portability.md). **An `exit N` inside an `awk` program is awk's status, not the script's**, which is why `check-sh.sh` counts only bash-shaped ones — `exit N` followed by `;`, end of line, `&&` or `||` — and leaves `{ exit 1 }` alone: `t.sh:657` ends its awk program that way to say "no table found", and the shell's own code for that case is the `die` on the line that reads the substitution
+**An undefined `awk` escape is noise, not necessarily a difference.** `\ ` for a space is undefined by POSIX, but gawk, mawk, busybox awk, goawk and the one-true-awk macOS ships all read it as a space. Fix it for the warning, and do not invent a portability story that measurement does not support — the same discipline that keeps the bash floor honest in [portability.md](portability.md). **An `exit N` inside an `awk` program is awk's status, not the script's**, which is why `check-sh.sh` counts only bash-shaped ones — `exit N` followed by `;`, end of line, `&&` or `||` — and leaves `{ exit 1 }` alone
 
 **`awk -v` runs escape processing over the value, so a regex passed that way loses its backslashes.** POSIX reads a `-v` value as if it stood between double quotes in the program, so `\t` turns into a tab in every awk measured, and `\.` — an escape POSIX leaves undefined — turns into a plain `.` in gawk, busybox awk and the one-true-awk macOS ships, while mawk keeps the backslash. Here the undefined escape of the entry above does change the answer:
 
@@ -138,8 +138,8 @@ $ RE='a\.b' awk 'BEGIN { print ("axb" ~ ENVIRON["RE"]) }'
 0
 ```
 
-The dot now matches any character, and the only trace is gawk's warning on stderr — the one-true-awk and busybox print none — so a suite that reads stdout alone sees a pattern that quietly matches too much. **Hand data to awk through the environment and read `ENVIRON["NAME"]`**: POSIX makes each element the variable's value as it is, all four awks agree, and `check-sh.sh` plants its defects that way (`check-sh.sh:651,655`) after a `-v` pass mangled the backslashes of a planted line. A gate that runs awk over its own patterns can also require a clean run to leave stderr empty, which is how the contributing skill's gate now catches it
+The dot now matches any character, and the only trace is gawk's warning on stderr — the one-true-awk and busybox print none — so a suite that reads stdout alone sees a pattern that quietly matches too much. **Hand data to awk through the environment and read `ENVIRON["NAME"]`**: POSIX makes each element the variable's value as it is and the measured awks agree. A gate that runs awk over its own patterns can also require a clean run to leave stderr empty
 
 ## Next
 
-The manuals and wiki pages behind each entry are in [sources.md](sources.md#pitfalls); whether a check like these would ever notice a regression belongs to the [tests](https://github.com/rokokol/tests-skill) skill
+The manuals and wiki pages behind each entry are in [sources.md](sources.md#pitfalls)

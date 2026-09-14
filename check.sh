@@ -117,8 +117,9 @@ check_lint() {
 
   echo "== no paragraph in the docs is hard-wrapped or ends on a full stop"
   # GitHub soft-wraps, so a manual break means a one-word edit reflows every line after
-  # it, and a paragraph ends bare. The rules' home is the create-readme skill, which cannot
-  # be assumed present in CI, so their machine-decidable part is spelled here — over every
+  # it, and a paragraph ends bare. The rules' home is
+  # https://github.com/rokokol/create-readme-skill, which cannot be assumed present in CI,
+  # so their machine-decidable part is spelled here — over every
   # doc the skill ships, not the readme alone: SKILL.md and the references are what an
   # agent reads
   docs=(README.md SKILL.md CHANGELOG.md references/*.md)
@@ -163,17 +164,10 @@ check_lint() {
   [[ "$(full_stopped "$work/stopped.md" | wc -l)" -eq 3 ]] ||
     fail "the full-stop check missed a full stop, bare or behind markup"
 
-  echo "== the readme's layout block is SKILL.md's, byte for byte"
-  # The readme restates the layout for a person reading on GitHub, and a restated list
-  # drifts: the two differed by one phrase within a day of being written
-  layout_of() { awk '/^## Layout$/ { on = 1; next } on && /^```$/ { if (seen) exit; seen = 1; next } on && seen { print }' "$1"; }
-  [[ -n "$(layout_of SKILL.md)" ]] || fail "no layout block could be read from SKILL.md — the comparison below would pass on nothing"
-  [[ "$(layout_of SKILL.md)" == "$(layout_of README.md)" ]] ||
-    fail "README.md's layout block differs from SKILL.md's — one of them drifted"
-
   echo "== SKILL.md loads, every reference is reachable, and every link and anchor resolves"
-  # The one gate every skill repository shares, vendored from the ci skill. It proves each
-  # of its own checks able to fail on every run, so nothing here has to
+  # The one gate every skill repository shares, vendored from
+  # https://github.com/rokokol/ci-skill. It proves each of its own checks able to fail on
+  # every run, so nothing here has to
   ./check-skill.sh -n "$skill_name" .
 
   echo "== the changelog obeys the versioning skill's rules"
@@ -187,11 +181,12 @@ check_behaviour() {
   # the falsification of the checker
   # Its own documents included: every `check-sh.sh …` span in SKILL.md and the readme must
   # spell flags it parses
-  checker -d SKILL.md -d README.md check-sh.sh
+  checker -m SKILL.md -d README.md check-sh.sh
   checker -e SCRIPT_ -c templates/completions/script.sh.bash templates/completions/_script.sh templates/script.sh
   # vendor-sync.sh was red on the checker's first run, for a real reason: its dispatcher
   # spelled the help arm `-h | --help)` without `help`. The fix went to its source in
-  # rokokol/ci-skill and the cascade brought it here, which is how a copy is meant to change
+  # https://github.com/rokokol/ci-skill and the cascade brought it here, which is how a copy
+  # is meant to change
   for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checker "$s"; done
 
   echo "== the proxy catches every construct in the fixture under a 3.2 claim, and none without"

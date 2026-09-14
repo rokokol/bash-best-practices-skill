@@ -39,7 +39,7 @@ zsh:1: read-only variable: status
 
 `status=$?` is ordinary bash and an error in zsh, so `rc=$?` is the spelling that survives both; `=foo` bites whenever a command line carries a word starting with `=` — a version pin, an `awk` assignment, a `--flag=value` split by accident — and quoting is the fix, as it is for most of what follows
 
-**zsh does not word-split an unquoted variable, and it reads `:h`, `:t`, `:r`, `:e` after one as history-style modifiers.** The first turns a separator-joined string into one field; the second eats text with no complaint at all — ten pushes failed on 2026-09-10 because a refspec was built this way, `$h:r` taken as "strip the extension". **Brace every expansion followed by punctuation**: it costs nothing in bash and is the difference between a refspec and a corrupted one in zsh
+**zsh does not word-split an unquoted variable, and it reads `:h`, `:t`, `:r`, `:e` after one as history-style modifiers.** The first turns a separator-joined string into one field; the second eats text with no complaint at all, `$h:r` taken as "strip the extension". **Brace every expansion followed by punctuation**: it costs nothing in bash and is the difference between a refspec and a corrupted one in zsh
 
 ```console
 $ zsh -c 'v="a b"; printf "[%s]\n" $v'
@@ -77,7 +77,7 @@ exit=0
 
 **Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, and what a local probe of it can and cannot settle, see [portability.md](portability.md#the-proxy-is-labelled-the-proof-is-a-run)
 
-**Judge a script by its shebang, not by the shell that invoked it, and run it as a file rather than pasting its body into the tool.** A file beginning `#!/usr/bin/env bash` is bash whatever the agent is typing into, so "it failed in my shell" is not a finding about the script and "it worked in my shell" is not a pass ([shape.md](shape.md)). Pasting reinterprets every line under zsh and loses the whole class of differences above, along with `$0`, `BASH_SOURCE`, the header the help is extracted from and the `set -euo pipefail` the file opens with — `bash ./script.sh args` is the honest invocation, and `"$BASH" ./script.sh` inside a gate keeps nested runs on the interpreter the gate is proving (`tests/check.sh:42-45`)
+**Judge a script by its shebang, not by the shell that invoked it, and run it as a file rather than pasting its body into the tool.** A file beginning `#!/usr/bin/env bash` is bash whatever the agent is typing into, so "it failed in my shell" is not a finding about the script and "it worked in my shell" is not a pass ([shape.md](shape.md)). Pasting reinterprets every line under zsh and loses the whole class of differences above, along with `$0`, `BASH_SOURCE`, the header the help is extracted from and the `set -euo pipefail` the file opens with — `bash ./script.sh args` is the honest invocation, and `"$BASH" ./script.sh` inside a gate keeps nested runs on the interpreter the gate is proving
 
 **`bash -n` and `zsh -n` are the parse checks, one per dialect.** A bash script is parse-checked with `bash -n`, a zsh completion with `zsh -n` and nothing else — shellcheck has no zsh dialect, and `bash -n` on a `#compdef` file reports syntax errors that are not ([completions.md](completions.md), [lint.md](lint.md))
 
