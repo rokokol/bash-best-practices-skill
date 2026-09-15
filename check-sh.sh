@@ -813,7 +813,8 @@ nested "$c" $(full "$c") >/dev/null 2>&1 || die "self-test: a help spelling 'scr
 
 c=$(copy unclaimed)
 # The proxy is gated on the claim: a script that does not claim 3.2 may use bash 4
-sed 's/^# Needs bash 3.2 and POSIX tools only.$/# Needs bash 4./' "$c/script.sh" >"$c/s" && mv "$c/s" "$c/script.sh"
+# The claim as the check finds it, not the template's whole line, which is then free to change
+sed 's/^\(# .*\)Needs bash 3\.2.*$/\1Needs bash 4./' "$c/script.sh" >"$c/s" && mv "$c/s" "$c/script.sh"
 plant "$c" 'HERE=' 'false && declar'"e -A m"
 # shellcheck disable=SC2046
 nested "$c" $(full "$c") >/dev/null 2>&1 || die "self-test: a bash 4 construct was flagged in a script that claims no bash 3.2"
