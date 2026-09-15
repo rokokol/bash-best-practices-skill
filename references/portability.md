@@ -4,7 +4,7 @@ What a script may assume about the machine it lands on, how that assumption is w
 
 ## Declaring the floor
 
-**Every script says in its header which bash it needs.** An unstated floor is discovered only when the script lands on an older machine. The line is in the header comment: it tells an editor which constructs are allowed and changes nothing for a caller, whose bash the shebang picks ([shape.md](shape.md#the-header-and-the-help))
+**Every script says in its header which bash it needs.** An unstated floor is discovered only when the script lands on an older machine. The line is in the header comment, for the reason [shape.md](shape.md#the-header-and-the-help) gives
 
 **A script that travels declares 3.2, with exactly the text `Needs bash 3.2 and POSIX tools only`.** The wording is fixed because it is matched, not read: `check-sh.sh` turns its proxy grep on when the header matches `^# .*Needs bash 3\.2`, and a script that words the claim differently is silently unguarded
 

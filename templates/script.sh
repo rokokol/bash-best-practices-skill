@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# For whoever edits this file, and only that: where it comes from, the invariants the code
-# keeps, the reason behind a choice that looks wrong. What it does and how to call it is
-# usage() below
-# Needs bash 3.2 and POSIX tools only.
+# Needs bash 3.2 and POSIX tools only
 set -euo pipefail
 
 usage() {
@@ -16,7 +13,7 @@ script.sh — one line saying what it is and what it is for
   -l DIR          the log directory (default: $SCRIPT_LOGDIR, else the current one)
 
 Environment: SCRIPT_LOGDIR is the log directory when -l is not given
-Nothing here reaches the network.
+Nothing here reaches the network
 Exit 0 done, 1 when the thing asked about is wrong, 2 on a usage error
 EOF
 }
