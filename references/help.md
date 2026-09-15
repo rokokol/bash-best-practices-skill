@@ -2,29 +2,26 @@
 
 A CLI has one complete list of what it does, and it is what the tool prints when asked. Everything else — a table in a readme, the words a completion offers — is a mirror, allowed only where its reader cannot ask the tool, and only because a machine diffs it against the dispatcher in both directions. This file says how the help is produced, what it has to contain, and in what textual shape, because `check-sh.sh` reads it
 
-## Three ways to print it, and when each applies
+## One way to print it: a heredoc
 
 ```sh
-usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; }
-usage() { awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"; }
-```
-
-- **The header, extracted open-endedly, for a checker or any small utility.** Both forms print lines 2 onward up to the first line that is not a comment, stripping one `#` and one optional space. In the `sed` pair, `$d` drops the terminator line that the range `/^[^#]/` has to include in order to stop there; the `awk` one-liner does the same in one process and is the better read in a script that already parses text with awk. `check-sh.sh` recognises either, and then proves the extraction: the last line of `--help` must equal the last line of the header, or the finding is `--help stops before the end of its own header`
-- **A quoted heredoc, when the help is longer than a header should be.** The rule that the header carries the whole story then weakens to this: the header carries the synopsis and the claims, the heredoc carries the list
-
-```sh
-help_run() {
+usage() {
   cat <<'EOF'
-name.sh run [-n | --dry-run] [-l DIR]
+name.sh — one line saying what it is
+
+  name.sh run [-n | --dry-run] [-l DIR]   do the thing
 ...
 EOF
 }
 ```
 
+- **The help is a quoted heredoc in `usage()`, right after the header and the `set` line.** It is code bash has already parsed, so it prints whatever the script was read from — a file, stdin, or the pipe `bash <(curl …)` hands it — and it is still the first thing a reader of the file meets
 - **The delimiter is quoted.** `<<'EOF'`, so `$1`, backticks and `${...}` in the examples stay literal — and shellcheck reads that cleanly, where a `printf` full of literal `${...}` needs a disable comment (SC2016, [lint.md](lint.md))
-- **`help [SUB]`, when subcommands have flags of their own.** One `help_<sub>()` per subcommand, a `cmd_help` dispatching on the topic, and a general help that lists the subcommands and says where the rest is. `check-sh.sh` runs `"$BASH" "$SCRIPT" help SUB` for every `help_<sub>()` it finds, and checks that subcommand's flags against that text, so splitting the help costs nothing in coverage
+- **`help [SUB]`, when subcommands have flags of their own.** One `help_<sub>()` per subcommand, each a heredoc of the same shape, a `cmd_help` dispatching on the topic, and a general help that lists the subcommands and says where the rest is. `check-sh.sh` runs `"$BASH" "$SCRIPT" help SUB` for every `help_<sub>()` it finds, and checks that subcommand's flags against that text, so splitting the help costs nothing in coverage
 
-**A fixed line range is forbidden.** With a header ending at line 16, `sed -n '2,17p'` prints the first code line as help; after adding a comment it instead cuts the help short. The range drifts in both directions and neither direction announces itself, so the checker reports `usage() prints a fixed line range` for any `sed -n 'N,Mp' "${BASH_SOURCE` pattern
+**The help never reads the script's own file.** Printing the header back out with `sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}"`, or the same in awk, reads the pipe bash itself is reading when the script arrives through `bash <(…)`, and bash has read it up to the command being run: called from the dispatcher at the bottom, the reader finds nothing left and the help comes out empty at exit 0, and called earlier it takes the rest of the program ([pitfalls.md](pitfalls.md#the-interpreter)). `check-sh.sh` runs the help a second time through `bash <(cat SCRIPT)` and reports a run that exits 0 with other text than the file's as `prints other text through a pipe than from the file`, naming the line when a `sed`, `awk`, `head`, `tail`, `cat`, `grep` or `cut` reads `"${BASH_SOURCE[0]}"` there. The probe decides and the grep only points, since `$0` names the file too and in awk is the record, which no grep can tell apart. A run that fails outright is a script that needs the files beside it, an installer most often: it says so and is no finding
+
+**The header comment lists nothing.** It says why the script exists and where it comes from, and it makes the claims about the file — `Nothing here reaches the network`, `Needs bash 3.2 and POSIX tools only` — which are not part of the interface. A usage, flag or code row in it, or an `Exit` or `Environment:` line, is a second list beside the help, and the checker reports it as `carries a line that belongs to the help alone`. The drift is measured rather than feared: a header in the tests skill that listed `t.sh`'s subcommands beside its help fell three of them behind the dispatcher before anyone noticed
 
 ## What the help must list, and in what shape
 
@@ -52,7 +49,7 @@ Exit: 0 clean, 1 findings printed, 2 a usage error.
 - **Every subcommand, written at least once as `NAME sub`** — the tool's own name, a space, the subcommand — anywhere in the text. Missing one gives `dispatches 'SUB' but its help never mentions 'NAME SUB'`; the reverse gives `help lists 'NAME SUB', which the dispatcher does not have`
 - **Every flag, as a row indented two spaces**: `  -x, --long VALUE  text`, short first, long second, the value name in capitals where the flag takes one, then two spaces and the prose. Only lines matching `^  -` are read as flag rows, so a flag mentioned only in a sentence is undocumented as far as the checker is concerned — `NAME SUB accepts FLAG but its help never mentions it`, or `help has a row for FLAG, which no parser accepts`
 - **Every environment variable the script reads, under a heading of its own** — `Environment:`, or `Runtime environment` for an installer listing what the *installed* tool reads. They are found in the source by prefix — `grep -oE "(^|[^A-Za-z0-9_])${PREFIX}[A-Z0-9_]+"` — so a script with variables takes `-e PREFIX`, and a prefix that matches nothing is itself a finding rather than a silent pass
-- **Every exit code the script can produce, in a sentence beginning `Exit` or as rows `  N  text`.** `Exit: 0 clean, 1 findings printed, 2 a usage error.` is the compact form; a harness with a whole band lists them as rows under `help codes`. The checker reads the numbers on the line carrying `Exit` and on the line after it, since a header wraps the sentence, and every `  N  ` row. The source side is a bash-shaped `exit N` with N greater than zero, outside comments and ending its statement — an awk program's `{ exit 1 }` inside a quoted string is not one, and a heredoc body is blanked first — and the finding is `exits N but its help never lists N`
+- **Every exit code the script can produce, in a sentence beginning `Exit` or as rows `  N  text`.** `Exit: 0 clean, 1 findings printed, 2 a usage error.` is the compact form; a harness with a whole band lists them as rows under `help codes`. The checker reads the numbers on the line carrying `Exit` and on the line after it, since a long sentence wraps, and every `  N  ` row. The source side is a bash-shaped `exit N` with N greater than zero, outside comments and ending its statement — an awk program's `{ exit 1 }` inside a quoted string is not one, and a heredoc body is blanked first — and the finding is `exits N but its help never lists N`
 
 ## Flag grammar
 

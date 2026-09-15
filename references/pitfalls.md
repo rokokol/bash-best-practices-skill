@@ -107,6 +107,33 @@ line 4
 
 Line 4 simply vanished. **Any updater that touches a script — a vendoring cascade, an installer, a self-update — writes a new file and `mv`s it over the old one**
 
+**Under `bash <(…)` a script's own path is the pipe bash is reading it from.** Process substitution hands bash a path such as `/proc/self/fd/12`, and `"${BASH_SOURCE[0]}"` is that path. bash reads a script from a pipe no further than the command it is about to run, so a reader that opens the path gets the rest of the file after that command, and bash, meeting EOF, never runs it:
+
+```console
+$ printf '%s\n' '#!/usr/bin/env bash' 'cat "${BASH_SOURCE[0]}"' 'echo AFTER' >g.sh
+$ bash <(cat g.sh); echo "exit=$?"
+echo AFTER
+exit=0
+```
+
+A `usage()` called from the dispatcher at the bottom therefore finds nothing left and prints nothing at exit 0, and a reader that runs earlier takes the rest of the program, here 28900 bytes of it:
+
+```console
+$ printf '%s\n' '#!/usr/bin/env bash' '# m.sh — the help is this header' 'sed -n "2,/^[^#]/p" "${BASH_SOURCE[0]}" | wc -c' >m.sh
+$ { cat m.sh; for i in $(seq 2000); do echo "# padding $i"; done; echo 'echo "END reached"'; } >big.sh
+$ bash m.sh; bash <(cat m.sh); echo "exit=$?"
+83
+0
+exit=0
+$ bash big.sh; bash <(cat big.sh); echo "exit=$?"
+83
+END reached
+28900
+exit=0
+```
+
+`bash:3.2` answers identically. `bash -s <m.sh` at least fails aloud, since `BASH_SOURCE[0]` is then no path at all. **The help is a heredoc, never the header read back out of the file** ([help.md](help.md)), and `check-sh.sh` runs every script's help through such a pipe and reports one that exits 0 with other text than the file's
+
 **`${2:?message}` exits 1 with bash's message, not the script's.** It reads like an argument check and it is a different contract: 1 is this family's code for "the thing asked about is wrong", a usage error is 2, and the text names the parameter by number rather than the tool by name:
 
 ```console

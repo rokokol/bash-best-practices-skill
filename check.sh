@@ -250,10 +250,6 @@ check_behaviour() {
   refuses "a script whose --help fails" "--help exited 1" tests/fixtures/help-fails.sh
   refuses "an unknown flag" "check-sh.sh [-n NAME]" --bogus templates/script.sh
   refuses "an unknown template" "no such template" --template nope
-  # The help is the header, whole
-  last=$(awk 'NR > 1 && /^#/ { last = $0; next } NR > 1 { exit } END { sub(/^# ?/, "", last); print last }' check-sh.sh)
-  [[ "$(checker --help | tail -n 1)" == "$last" ]] ||
-    fail "check-sh.sh --help stops before the end of its own header, whose last line is: $last"
 
   echo "== the checker's own self-test notices when one of its checks is taken away"
   # check-sh.sh proves its checks on a planted copy every run. This is the proof of that
@@ -274,6 +270,8 @@ check_behaviour() {
   neutered "exits \$n but its help never lists" "an exit code missing from the help"
   neutered "never names \$name \$s" "a document that lost a subcommand"
   neutered "is offered by a completion but not parsed" "a completion offering a flag that is not parsed"
+  neutered "prints other text through a pipe than from the file" "a usage() printing its help back with sed"
+  neutered "belongs to the help alone: \$row" "a usage line in the header comment"
   # Two plants lean on the proxy — a 3.2 claim in the canonical script and in a plain one —
   # and whichever the self-test reaches first is the one that has to notice
   neutered "claims bash 3.2 but" "a bash 4 construct"

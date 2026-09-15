@@ -7,8 +7,11 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Added
 
 - `references/harness.md`: zsh's `path` is `PATH` as a tied array, so an ad-hoc `while read -r repo path` in the agent's shell empties the command search path, and `cdpath`, `fpath` and `manpath` are tied the same way
+- `references/pitfalls.md`: under `bash <(…)` a script's own path is the pipe bash is reading it from, and bash reads it no further than the command it runs, so a help read back out of the header by the dispatcher prints nothing at exit 0, and a reader that runs earlier takes the rest of the program, which bash then never runs
 
 ### Changed
+
+- The help is a quoted heredoc in `usage()`, and the header comment says why and makes the claims but lists nothing: `check-sh.sh --template` prints that shape, and `references/help.md` and `references/shape.md` describe it. `check-sh.sh` runs a script's help a second time through `bash <(cat SCRIPT)` and reports one that exits 0 with other text than the file's, naming the line that reads `"${BASH_SOURCE[0]}"` when there is one, while a run that fails outright, as an installer that needs its own directory does, is no finding; it also reports a header comment carrying a usage, flag or code row or an `Exit` or `Environment:` line; its findings on a fixed line range and on a help that stops before the header's end are gone with the extraction they policed. A script whose `usage()` prints its header goes red under this checker until its help is a heredoc
 
 - `check-skill.sh` is vendored from the [skill-authoring](https://github.com/rokokol/skill-authoring-skill) skill, where the rules it checks now live, and reports the rules a skill can break without breaking as warnings on stdout, the exit code unchanged: a `Layout` or install section in runtime, `used to`, a `path:line` citation, a link to a sibling skill, a concrete model id, and the rest its `--help` lists
 
