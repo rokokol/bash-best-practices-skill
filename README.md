@@ -65,7 +65,7 @@ check-sh.sh           the checker: help ⇔ dispatcher ⇔ flags ⇔ codes ⇔ d
 references/           one spec per rule: shape, help, portability, pitfalls, harness, completions, lint; sources.md for the evidence
 templates/            what check-sh.sh --template prints, held byte-equal by the gate; the macOS workflow a 3.2 claim earns
 check.sh              this repo's own gate, self-tested against known-bad inputs, with a behaviour half that runs under bash 3.2
-check-skill.sh        the gate every skill repository shares, vendored from the ci skill
+check-skill.sh        the gate every skill repository shares, vendored from the skill-authoring skill
 check-pins.sh         the pin guard for the workflows, vendored from the ci skill
 check-changelog.sh    the changelog checker, vendored from the versioning skill
 vendor-sync.sh        keeps the vendored copies byte-equal to their source, vendored from the ci skill
