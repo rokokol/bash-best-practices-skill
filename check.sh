@@ -1,22 +1,31 @@
 #!/usr/bin/env bash
-# The gate for this repository: lint what the skill ships, hold it to its own rules, and
-# prove that each of its checks can actually go red. A check that has never failed is a
-# decoration, and this skill hands its checker to other repositories.
-#
-# Nothing here touches the network, so it is safe on pull requests.
-#
-#   check.sh [lint|behaviour|all]
-#
-# Two halves, because they need different things. `lint` reads what the skill ships —
-# scripts, workflows, docs, templates — and needs actionlint, shellcheck, shfmt and zsh
-# from the flake's dev shell, never from whatever the runner has. `behaviour` runs
-# check-sh.sh against scripts and planted copies and needs only bash, so it can be run
-# under the bash 3.2 that macOS ships, which is what the checker claims to run on. `all`
-# is both.
-#
-#   nix develop -c ./check.sh
-#   /bin/bash ./check.sh behaviour        # on a macOS runner, CHECK_BASH32=1
+# A check that has never failed is a decoration, and this skill hands its checker to other
+# repositories
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+check.sh — the gate for this repository: lint what the skill ships, hold it to its own
+rules, and prove that each of its checks can actually go red
+
+  check.sh [lint|behaviour|all]
+
+Two halves, because they need different things. lint reads what the skill ships —
+scripts, workflows, docs, templates — and needs actionlint, shellcheck, shfmt and zsh
+from the flake's dev shell, never from whatever the runner has. behaviour runs
+check-sh.sh against scripts and planted copies and needs only bash, so it can be run
+under the bash 3.2 that macOS ships, which is what the checker claims to run on. all,
+the default, is both
+
+  nix develop -c ./check.sh
+  /bin/bash ./check.sh behaviour        # on a macOS runner, CHECK_BASH32=1
+
+Environment: CHECK_BASH32=1 says this bash is the 3.2 under proof, and adds the probes
+only that bash can fail
+Nothing here touches the network, so it is safe on pull requests
+Exit 0 when everything holds, 1 on a failure or an unknown mode
+EOF
+}
 
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 cd "$HERE"
@@ -45,6 +54,10 @@ trap 'rm -rf "$work"' EXIT
 mode="${1:-all}"
 case "$mode" in
   lint | behaviour | all) ;;
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
   *) fail "no such mode: '$mode' — lint, behaviour or all" ;;
 esac
 

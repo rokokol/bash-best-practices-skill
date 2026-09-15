@@ -1,6 +1,6 @@
 # The help is the single source of truth
 
-A CLI has one complete list of what it does, and it is what the tool prints when asked. Everything else — a table in a readme, the words a completion offers — is a mirror, allowed only where its reader cannot ask the tool, and only because a machine diffs it against the dispatcher in both directions. This file says how the help is produced, what it has to contain, and in what textual shape, because `check-sh.sh` reads it
+A CLI has one complete list of what it does, and it is what the tool prints when asked. A copy of it lives only in a README, for a reader who has not installed the tool, and only because a machine diffs it against the dispatcher in both directions; the words a completion offers are held to the code the same way, by their own rule ([completions.md](completions.md)). This file says how the help is produced, what it has to contain, and in what textual shape, because `check-sh.sh` reads it
 
 ## One way to print it: a heredoc
 
