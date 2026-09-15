@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# What a maintainer needs and a caller does not: why the script exists, where it comes
-# from, what it must never do. What it accepts is usage() below, and nowhere else
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only.
+# For whoever edits this file, and only that: where it comes from, the invariants the code
+# keeps, the reason behind a choice that looks wrong. What it does and how to call it is
+# usage() below
+# Needs bash 3.2 and POSIX tools only.
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-script.sh — one line saying what it is, in the shape every script of the family has
+script.sh — one line saying what it is and what it is for
 
   script.sh run [-n|--dry-run] [-l DIR]    do the thing, in DIR
   script.sh stop                           stop doing it
@@ -15,6 +16,7 @@ script.sh — one line saying what it is, in the shape every script of the famil
   -l DIR          the log directory (default: $SCRIPT_LOGDIR, else the current one)
 
 Environment: SCRIPT_LOGDIR is the log directory when -l is not given
+Nothing here reaches the network.
 Exit 0 done, 1 when the thing asked about is wrong, 2 on a usage error
 EOF
 }

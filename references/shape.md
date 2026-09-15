@@ -2,12 +2,12 @@
 
 Every utility in this family is the same script with a different middle: the same header, the same `set` line, the same refusal helpers, the same dispatcher, the same exit codes. Because `check-sh.sh` parses several of these forms literally, the spellings below are the definition rather than a preference. The skeleton that assembles them lives once, in [`templates/script.sh`](../templates/script.sh); nothing here is a second copy of it
 
-## The header says why, the help says what
+## The header and the help
 
 ```sh
 #!/usr/bin/env bash
-# Why this exists, where it comes from, what it must never do.
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only.
+# Taken from OWNER/REPO through the vendoring cascade: change it there, never here.
+# Needs bash 3.2 and POSIX tools only.
 set -euo pipefail
 
 usage() {
@@ -18,15 +18,18 @@ name.sh — one sentence saying what this is and what it is for
 
   -n NAME   what the docs call the script (default: its basename)
 
+Nothing here reaches the network.
 Exit: 0 clean, 1 findings printed, 2 a usage error
 EOF
 }
 ```
 
 - **The shebang is `#!/usr/bin/env bash`, never `sh`.** Everything below — `[[`, arrays, `PIPESTATUS`, `local` — is bash, and `sh` is dash on a Debian host, which has none of it. A script whose shebang says bash is judged as bash whatever shell the caller is typing in, which is what makes it safe under the agent's harness ([harness.md](harness.md))
-- **The header runs from line 2 to the first line that is not a comment, and it lists nothing.** It carries the reasons and the claims; what the script accepts lives once, in the heredoc `usage()` prints, which never reads the file it sits in. How the help is written, and what it must contain, is [help.md](help.md)
+- **The help is for whoever runs the script, and never opens it.** It says what the script is for and what it does, lists every subcommand, flag, variable and exit code, and states every fact a caller acts on: "Nothing here reaches the network" is what lets a gate run a check on a pull request, so it is the help's. It is a quoted heredoc in `usage()`, which never reads the file it sits in; how it is written, and in what grammar, is [help.md](help.md)
+- **The header is for whoever changes the file.** It runs from line 2 to the first line that is not a comment and holds only what an editor needs: where the file comes from and how a copy of it changes, the bash it is written for, the invariants the code keeps, and the reason behind a choice that looks wrong. What the script is for is not among them — that is the caller's first question, so it opens the help
+- **The test is what a line changes, and a line both readers need goes to the help.** A line is the caller's when it changes what they type, what they expect or where they run the script, and the editor's when it constrains what may be written. `Needs bash 3.2 and POSIX tools only` constrains the constructs and changes nothing for a caller, whose bash the shebang picks, so it is the header's; a line that serves both goes to the help, which the editor reads in the same file and the caller cannot avoid, and a line that serves neither goes nowhere
+- **The bash floor is matched, not read.** `check-sh.sh` finds the claim as `^# .*Needs bash 3\.2` in the header and, once it is there, polices it by a proxy grep that a run under 3.2 proves ([portability.md](portability.md))
 - **Usage, flag and exit-code rows in the help are indented two spaces.** The indent is grammar rather than typography: `check-sh.sh` reads flag rows as `^  -` and exit-code rows as `^  [0-9]+  `
-- **The header says whether the script touches the network, and which bash it needs.** "Nothing here reaches the network" is what makes a check safe to run on a pull request; `Needs bash 3.2 and POSIX tools only` is the portability claim, matched as `^# .*Needs bash 3\.2` and, once present, policed by a proxy grep and proved by a run under 3.2 ([portability.md](portability.md))
 
 ## `set -euo pipefail`, flag by flag
 

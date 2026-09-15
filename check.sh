@@ -215,7 +215,7 @@ check_behaviour() {
   # a real 3.2 such a script cannot even be parsed, so that control has nothing to say
   if ((BASH_VERSINFO[0] >= 4)); then
     {
-      checker --template | sed 's/^# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only.$/# Nothing here reaches the network. Needs bash 4./'
+      checker --template | sed 's/^# Needs bash 3.2 and POSIX tools only.$/# Needs bash 4./'
       printf 'planted_never_called() {\n'
       grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh
       printf '}\n'

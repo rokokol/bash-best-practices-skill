@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# The gate a shell utility needs, in one file that travels. The help is the single source
-# of truth for what a script accepts, so every subcommand its dispatcher has, every flag
-# its parsers take, every variable it reads and every code it exits with must be in the
-# help — and every document and completion that restates a list is held to the same code,
-# in both directions. Each check is proven able to fail on every run, on a canonical
-# script with one defect planted, so a copy of this file falsifies itself wherever it runs
-#
-# It has no repo-specific part: another repository takes it through the vendoring cascade
-# (references/bump-cascade.md in https://github.com/rokokol/ci-skill), never edits its copy
-# in place, and calls it from its own gate. What it accepts is usage() below, and nowhere
-# else
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only, so it runs on a
-# macOS runner unchanged
+# Other repositories take this file through the vendoring cascade (references/bump-cascade.md
+# in https://github.com/rokokol/ci-skill): a copy is never edited in place, a change is made
+# here and reaches them from here
+# Needs bash 3.2 and POSIX tools only, so it runs on a macOS runner unchanged
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
 check-sh.sh — holds a shell script's help, documents and completions to its code
+
+The help is the single source of truth for what a script accepts, so every subcommand its
+dispatcher has, every flag its parsers take, every variable it reads and every code it
+exits with must be in the help — and every document and completion that restates a list
+is held to the same code, in both directions. Each check is proven able to fail on every
+run, on a canonical script with one defect planted, so a copy falsifies itself wherever
+it runs. It has no repo-specific part: a repository takes it through the vendoring
+cascade and calls it from its own gate
 
   check-sh.sh [-n NAME] [-e PREFIX] [-d DOC]... [-m DOC]... [-c BASH ZSH] SCRIPT
   check-sh.sh --template [script|bash|zsh]
@@ -36,11 +35,12 @@ The shapes it reads are the standard's own: a `case "$cmd"` dispatcher at the to
 with `-h | --help | help)` and a `*)` arm that sends usage to stderr, flag arms such as
 `-n | --dry-run)` inside cmd_<sub>() functions or at the top level, literal `exit N`, a
 help printed from a heredoc or by a `help [SUB]` subcommand, and a header comment that
-makes claims and lists nothing. They are spelled out in references/shape.md and help.md
-of https://github.com/rokokol/bash-best-practices-skill. A header line claiming "Needs
-bash 3.2" turns on a grep for constructs newer than 3.2 or absent from a BSD userland; a
-grep is a proxy, and the proof is a run under the real 3.2
+lists nothing. They are spelled out in references/shape.md and help.md of
+https://github.com/rokokol/bash-best-practices-skill. A header line claiming "Needs bash
+3.2" turns on a grep for constructs newer than 3.2 or absent from a BSD userland; a grep
+is a proxy, and the proof is a run under the real 3.2
 
+Nothing here reaches the network.
 Exit 0 when everything agrees, 1 with one `check-sh: <what>` line per finding, 2 on a
 usage error, an unreadable file, a --help that fails, or a script with nothing to check
 EOF
@@ -60,14 +60,15 @@ die() { # a usage error, never a finding
 template_script() {
   cat <<'TEMPLATE'
 #!/usr/bin/env bash
-# What a maintainer needs and a caller does not: why the script exists, where it comes
-# from, what it must never do. What it accepts is usage() below, and nowhere else
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only.
+# For whoever edits this file, and only that: where it comes from, the invariants the code
+# keeps, the reason behind a choice that looks wrong. What it does and how to call it is
+# usage() below
+# Needs bash 3.2 and POSIX tools only.
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-script.sh — one line saying what it is, in the shape every script of the family has
+script.sh — one line saying what it is and what it is for
 
   script.sh run [-n|--dry-run] [-l DIR]    do the thing, in DIR
   script.sh stop                           stop doing it
@@ -76,6 +77,7 @@ script.sh — one line saying what it is, in the shape every script of the famil
   -l DIR          the log directory (default: $SCRIPT_LOGDIR, else the current one)
 
 Environment: SCRIPT_LOGDIR is the log directory when -l is not given
+Nothing here reaches the network.
 Exit 0 done, 1 when the thing asked about is wrong, 2 on a usage error
 EOF
 }
@@ -811,7 +813,7 @@ nested "$c" $(full "$c") >/dev/null 2>&1 || die "self-test: a help spelling 'scr
 
 c=$(copy unclaimed)
 # The proxy is gated on the claim: a script that does not claim 3.2 may use bash 4
-sed 's/^# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only.$/# Nothing here reaches the network./' "$c/script.sh" >"$c/s" && mv "$c/s" "$c/script.sh"
+sed 's/^# Needs bash 3.2 and POSIX tools only.$/# Needs bash 4./' "$c/script.sh" >"$c/s" && mv "$c/s" "$c/script.sh"
 plant "$c" 'HERE=' 'false && declar'"e -A m"
 # shellcheck disable=SC2046
 nested "$c" $(full "$c") >/dev/null 2>&1 || die "self-test: a bash 4 construct was flagged in a script that claims no bash 3.2"
