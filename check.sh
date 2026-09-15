@@ -171,7 +171,9 @@ check_lint() {
   ./check-skill.sh -n "$skill_name" .
 
   echo "== the changelog obeys the versioning skill's rules"
-  ./check-changelog.sh -n CHANGELOG.md
+  # Pinned: without -t a changelog moved wholesale to another template stays green, which is
+  # the versioning skill's PITFALLS.md
+  ./check-changelog.sh -n -t '## {date}' CHANGELOG.md
 }
 
 check_behaviour() {
