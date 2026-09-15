@@ -3,7 +3,7 @@
 # copy in place: change it at its source and let the weekly cascade bring it back. How it
 # works: references/bump-cascade.md in https://github.com/rokokol/ci-skill
 vendor-sync.sh rokokol/ci-skill templates/vendor-sync.sh 974454004b06e09b0af67485f0781eb87afc3c11 65748845239e8495855de9e11fb36dd633c372c6
-check-pins.sh rokokol/ci-skill templates/check-pins.sh 974454004b06e09b0af67485f0781eb87afc3c11 8c8ce5ad9c45cfc9c1d86b6ef07ec1f2bb241359
-check-changelog.sh rokokol/versioning-skill check-changelog.sh c64d63e19ff63c4fc113e19422131418488093e7 0e45487adf6622d1542b4ad73b9b6fc64c601a23
+check-pins.sh rokokol/ci-skill templates/check-pins.sh 65a870043a54563fe72302de56b9d06ce932adbd f44a172369006a0aae79f4a4f0f1d6e6afde2203
+check-changelog.sh rokokol/versioning-skill check-changelog.sh 8cae74bb044d42acc2034bfa307ee92101f3273d 7e66f60e725546cf28414f93b15230567e511c6e
 .github/workflows/vendor-sync.yml rokokol/ci-skill templates/github/workflows/vendor-sync.yml d55020ab3ca780ea6299336d923b8a3fcb8f491d a5bde77f98d55a43b2c993f4c96a952e0b68010d manual
-check-skill.sh rokokol/skill-authoring-skill check-skill.sh ff7f0b2694159bc6b3635929c94d2d3de20d958b 1f7ea1b976e91e3f6e00256538902693c7d2ca10
+check-skill.sh rokokol/skill-authoring-skill check-skill.sh 1e254e5d132021cbc576bc2dd9a3356dbf377165 5f716f5461af496dd66837427b1c2f40c78537fd
