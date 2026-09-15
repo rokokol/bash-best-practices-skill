@@ -739,6 +739,16 @@ expect_red() { # expect_red DIR FRAGMENT WHAT [ARGS...]
   esac
   planted=$((planted + 1))
 }
+# A copy that must pass is run once, and that run's own output and status are the report.
+# A second run for the message would describe itself: a failure that does not repeat left
+# an empty reason on a macOS runner, and nothing to find the cause by
+expect_green() { # expect_green DIR WHAT [ARGS...]
+  local d="$1" what="$2" out status=0
+  shift 2
+  out=$(nested "$d" "$@" 2>&1) || status=$?
+  ((status == 0)) ||
+    die "self-test: $what was rejected with exit $status — the checker is broken, not the script:"$'\n'"$out"
+}
 # The constructs planted below are spelled in two halves, so this file's own claim of
 # bash 3.2 is not contradicted by its own self-test
 # Through the environment rather than -v: awk reads escape sequences in a -v value, so a
@@ -758,8 +768,7 @@ replace_usage() { # replace_usage DIR LINE -> usage() and its heredoc replaced b
 
 c=$(copy faithful)
 # shellcheck disable=SC2046 # full() prints the arguments, split on purpose
-nested "$c" $(full "$c") >/dev/null 2>&1 ||
-  die "self-test: the canonical script was rejected — the checker is broken, not the script:"$'\n'"$(nested "$c" $(full "$c") 2>&1 || :)"
+expect_green "$c" "the canonical script" $(full "$c")
 
 c=$(copy nothing)
 printf '#!/usr/bin/env bash\necho hi\n' >"$c/script.sh"
@@ -792,7 +801,7 @@ plant "$c" '  script.sh stop' '  script.sh anything                       passed
 # shellcheck disable=SC2016 # the backticks are markdown, not a command substitution
 printf '\nAlso `script.sh anything` goes through\n' >>"$c/README.md"
 # shellcheck disable=SC2046
-nested "$c" $(full "$c") >/dev/null 2>&1 || die "self-test: a wrapper's help naming a passed-through command was rejected:"$'\n'"$(nested "$c" $(full "$c") 2>&1 || :)"
+expect_green "$c" "a wrapper's help naming a passed-through command" $(full "$c")
 
 c=$(copy bracketed)
 # A global option in brackets between the name and the subcommand is still `NAME sub`
@@ -864,8 +873,7 @@ c=$(copy needs-its-directory)
 # shellcheck disable=SC2016 # the expansion belongs to the script being written out
 plant "$c" 'HERE=' 'cat "$HERE/script.sh.bash" >/dev/null'
 # shellcheck disable=SC2046
-nested "$c" $(full "$c") >/dev/null 2>&1 ||
-  die "self-test: a script that fails outright through a pipe was reported:"$'\n'"$(nested "$c" $(full "$c") 2>&1 || :)"
+expect_green "$c" "a script that fails outright through a pipe" $(full "$c")
 
 c=$(copy header-usage)
 plant "$c" '#!/usr/bin/env bash' '#   script.sh stop                           stop doing it'
@@ -951,8 +959,7 @@ c=$(copy comp-wrapped-list)
 # The last line of an offered list wrapped onto two ends in `)` inside a case arm, and is
 # still an offer rather than a pattern: two consumers wrap their flag arrays this way
 awk '/words="-n --dry-run -l"/ { sub(/words="-n --dry-run -l"/, "local -a w=(-n"); print; print "          --dry-run -l)"; next } { print }' "$canon/script.sh.bash" >"$c/script.sh.bash"
-nested "$c" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh" >/dev/null 2>&1 ||
-  die "self-test: a flag list wrapped onto a second line ending in ) was read as a case pattern:"$'\n'"$(nested "$c" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh" 2>&1 || :)"
+expect_green "$c" "a flag list wrapped onto a second line ending in )" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh"
 
 c=$(copy comp-dialect)
 tail -n +2 "$canon/script.sh.bash" >"$c/script.sh.bash"
@@ -968,8 +975,7 @@ c=$(copy comp-action)
 # The action of an `N:message:action` spec is what zsh offers, and it counts
 awk '/^  local -a subcommands$/ { skip = 1 } skip && /^  \)$/ { skip = 0; next } skip { next } { print }' "$canon/_script.sh" |
   sed "s/'1:subcommand:->subcommand'/'1:subcommand:(run stop help)'/; s/subcommand) _describe 'subcommand' subcommands ;;/subcommand) ;;/" >"$c/_script.sh"
-nested "$c" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh" >/dev/null 2>&1 ||
-  die "self-test: a zsh completion offering its subcommands as an action list was rejected:"$'\n'"$(nested "$c" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh" 2>&1 || :)"
+expect_green "$c" "a zsh completion offering its subcommands as an action list" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh"
 
 c=$(copy claimed-bash4)
 plant "$c" 'HERE=' 'false && declar'"e -A m"

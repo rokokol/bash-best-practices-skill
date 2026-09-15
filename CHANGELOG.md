@@ -18,6 +18,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Fixed
 
 - `references/shape.md` said `yes 2>/dev/null | cmd` keeps `pipefail` quiet, and it does not: the status is the SIGPIPE, not the message, and the measured result is 141 either way. The entry now covers every consumer that stops reading early, `grep -q` finding its match, awk's `exit`, `sed q` and `head` among them, with three spellings that hold
+- `check-sh.sh`'s self-test reported a copy that should pass and did not with an empty reason: on the failure it ran the copy a second time for the message and dropped that run's status, so a failure that did not repeat, once on a macOS runner, left nothing to find its cause by. A copy that must pass is run once now, and the report is that run's exit status and output
 
 ## 2026-09-12
 
