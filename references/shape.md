@@ -30,12 +30,16 @@ set -euo pipefail
 - **`${PIPESTATUS[0]}` is read on the line after the pipeline and nowhere later.** Any simple command resets it, an assignment included, so the whole array is copied in one command — `ps=("${PIPESTATUS[@]}")` — and read from the copy. zsh spells it `$pipestatus` and indexes from 1, so a line moved between the two silently yields an empty string ([harness.md](harness.md))
 - **A `for` loop exits with its last iteration's status**, so a loop that fails in the middle and succeeds at the end succeeds: count failures in a variable and exit on the counter
 - **`-e` is dropped only where findings are counted, and a comment above the line says so** — `# No -e: every finding is printed and counted, and a non-zero grep is data, not a failure`. A checker that must print every finding before exiting cannot die on the first non-zero `grep`. That is the only excuse, and it needs the comment because the reason is invisible in the line itself; anywhere else a missing `-e` is a script that carries on after a failure and exits 0
-- **A producer whose consumer stops reading early dies of SIGPIPE, and `pipefail` makes that death the pipeline's status.** `yes | cmd` is the plain case; `awk '…{ exit }'`, `sed q` and `head` do the same to whatever feeds them, and under `set -e` the script ends there with 141 and not a word. Silencing the producer's stderr changes nothing, because the status is the signal and not the complaint. Say the death is expected with `{ yes || true; } | cmd`, let the consumer read on to the end, or feed it from a variable with `<<<`, which leaves no producer to kill:
+- **A producer whose consumer stops reading early dies of SIGPIPE, and `pipefail` makes that death the pipeline's status.** `yes | cmd` is the plain case; `grep -q`, which stops at its first match, `awk '…{ exit }'`, `sed q` and `head` do the same to whatever feeds them, so a `grep -q` that finds what it looks for fails the pipeline, and under `set -e` the script ends there with 141 and not a word. Silencing the producer's stderr changes nothing, because the status is the signal and not the complaint. Say the death is expected with `{ yes || true; } | cmd`, let the consumer read on to the end, or feed it from a variable with `<<<`, which leaves no producer to kill:
 
 ```console
 $ bash -c 'set -o pipefail; yes 2>/dev/null | head -1 >/dev/null; echo "status=$?"'
 status=141
 $ bash -c 'set -o pipefail; { yes || true; } | head -1 >/dev/null; echo "status=$?"'
+status=0
+$ bash -c 'set -o pipefail; seq 200000 | grep -q 1; echo "status=$?"'
+status=141
+$ bash -c 'set -o pipefail; v=$(seq 200000); grep -q 1 <<<"$v"; echo "status=$?"'
 status=0
 $ bash -c 'set -euo pipefail; seq 200000 | awk "NR == 1 { exit }"; echo survived'; echo "exit=$?"
 exit=141

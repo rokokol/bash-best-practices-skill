@@ -14,7 +14,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Fixed
 
-- `references/shape.md` said `yes 2>/dev/null | cmd` keeps `pipefail` quiet, and it does not: the status is the SIGPIPE, not the message, and the measured result is 141 either way. The entry now covers every consumer that stops reading early, awk's `exit`, `sed q` and `head` among them, with three spellings that hold
+- `references/shape.md` said `yes 2>/dev/null | cmd` keeps `pipefail` quiet, and it does not: the status is the SIGPIPE, not the message, and the measured result is 141 either way. The entry now covers every consumer that stops reading early, `grep -q` finding its match, awk's `exit`, `sed q` and `head` among them, with three spellings that hold
 
 ## 2026-09-12
 
