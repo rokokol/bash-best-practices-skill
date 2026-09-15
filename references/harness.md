@@ -73,6 +73,19 @@ after
 exit=0
 ```
 
+**`path` is `PATH` as an array, tied to it, so a loop that reads into `path` replaces the command search path.** `while read -r repo path` is the natural spelling for a list of repositories and their files, and in zsh every command after the first read is not found; `cdpath`, `fpath` and `manpath` are tied the same way, and bash has none of them. Quoting cannot help, since the name itself is the tie, so the fix is another name, `file` or `rel`:
+
+```console
+$ zsh -c 'typeset -p path cdpath fpath manpath' | sed 's/=(.*/=(…/'
+typeset -aT PATH path=(…
+typeset -aT CDPATH cdpath=(…
+typeset -aT FPATH fpath=(…
+typeset -aT MANPATH manpath=(…
+$ zsh -c 'printf "a b\n" | while read -r repo path; do head -1 /dev/null; done; echo "status=$?"'
+zsh:1: command not found: head
+status=127
+```
+
 ## Rules
 
 **Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, and what a local probe of it can and cannot settle, see [portability.md](portability.md#the-proxy-is-labelled-the-proof-is-a-run)

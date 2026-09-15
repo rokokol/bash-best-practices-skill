@@ -4,9 +4,17 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-15
 
+### Added
+
+- `references/harness.md`: zsh's `path` is `PATH` as a tied array, so an ad-hoc `while read -r repo path` in the agent's shell empties the command search path, and `cdpath`, `fpath` and `manpath` are tied the same way
+
 ### Changed
 
 - `check-skill.sh` is vendored from the [skill-authoring](https://github.com/rokokol/skill-authoring-skill) skill, where the rules it checks now live, and reports the rules a skill can break without breaking as warnings on stdout, the exit code unchanged: a `Layout` or install section in runtime, `used to`, a `path:line` citation, a link to a sibling skill, a concrete model id, and the rest its `--help` lists
+
+### Fixed
+
+- `references/shape.md` said `yes 2>/dev/null | cmd` keeps `pipefail` quiet, and it does not: the status is the SIGPIPE, not the message, and the measured result is 141 either way. The entry now covers every consumer that stops reading early, awk's `exit`, `sed q` and `head` among them, with three spellings that hold
 
 ## 2026-09-12
 

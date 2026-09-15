@@ -28,8 +28,22 @@ set -euo pipefail
 - **`-u`** makes an unset variable an error, so a typo'd name is not silently empty. `${VAR:-}` where empty is legitimate, and `${T-}` rather than `[[ -v T ]]`, which bash gained only in 4.2
 - **`-o pipefail`** makes a pipeline report the last non-zero status. Without it `false | true` succeeds, and so does `pytest | tail`
 - **`${PIPESTATUS[0]}` is read on the line after the pipeline and nowhere later.** Any simple command resets it, an assignment included, so the whole array is copied in one command — `ps=("${PIPESTATUS[@]}")` — and read from the copy. zsh spells it `$pipestatus` and indexes from 1, so a line moved between the two silently yields an empty string ([harness.md](harness.md))
-- **`yes | cmd` under `pipefail` fails**, because `yes`'s normal death by SIGPIPE becomes the pipeline's status — write `yes 2>/dev/null | cmd` or restructure. And **a `for` loop exits with its last iteration's status**, so a loop that fails in the middle and succeeds at the end succeeds: count failures in a variable and exit on the counter
+- **A `for` loop exits with its last iteration's status**, so a loop that fails in the middle and succeeds at the end succeeds: count failures in a variable and exit on the counter
 - **`-e` is dropped only where findings are counted, and a comment above the line says so** — `# No -e: every finding is printed and counted, and a non-zero grep is data, not a failure`. A checker that must print every finding before exiting cannot die on the first non-zero `grep`. That is the only excuse, and it needs the comment because the reason is invisible in the line itself; anywhere else a missing `-e` is a script that carries on after a failure and exits 0
+- **A producer whose consumer stops reading early dies of SIGPIPE, and `pipefail` makes that death the pipeline's status.** `yes | cmd` is the plain case; `awk '…{ exit }'`, `sed q` and `head` do the same to whatever feeds them, and under `set -e` the script ends there with 141 and not a word. Silencing the producer's stderr changes nothing, because the status is the signal and not the complaint. Say the death is expected with `{ yes || true; } | cmd`, let the consumer read on to the end, or feed it from a variable with `<<<`, which leaves no producer to kill:
+
+```console
+$ bash -c 'set -o pipefail; yes 2>/dev/null | head -1 >/dev/null; echo "status=$?"'
+status=141
+$ bash -c 'set -o pipefail; { yes || true; } | head -1 >/dev/null; echo "status=$?"'
+status=0
+$ bash -c 'set -euo pipefail; seq 200000 | awk "NR == 1 { exit }"; echo survived'; echo "exit=$?"
+exit=141
+$ bash -c 'set -euo pipefail; seq 200000 | awk "NR == 1 { print } { }" >/dev/null; echo survived'
+survived
+$ bash -c 'set -euo pipefail; v=$(seq 200000); awk "NR == 1 { exit }" <<<"$v"; echo survived'
+survived
+```
 
 ## Refusing
 
