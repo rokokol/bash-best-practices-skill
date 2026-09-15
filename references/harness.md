@@ -86,6 +86,27 @@ zsh:1: command not found: head
 status=127
 ```
 
+## What a background command is given
+
+**A command the Bash tool runs in the background gets a socket on stdin that never reaches end of file, where a foreground command gets `/dev/null`.** Anything that reads stdin — `cat`, `read`, a tool that falls back to reading input when given no file, a nested run that inherits the shell's stdin — returns at once in the foreground and waits forever in the background, with nothing on stderr to say why. Give every background command that must not wait `</dev/null`:
+
+```console
+$ ls -l /proc/self/fd/0 | sed 's/.* -> //'; timeout 5 cat >/dev/null; echo "exit=$?"
+/dev/null
+exit=0
+$ ls -l /proc/self/fd/0 | sed 's/.* -> //'; timeout 5 cat >/dev/null; echo "exit=$?"; timeout 5 cat </dev/null; echo "exit=$?"    # run_in_background
+socket:[27132086]
+exit=124
+exit=0
+```
+
+**A pipeline lasts as long as its longest member, so `sleep N | cmd` runs N seconds after `cmd` is done.** `sleep` writes nothing, so it never meets the SIGPIPE that ends a producer whose reader has gone, and it is no way to hold a command's stdin open; `</dev/null` is the stdin that ends:
+
+```console
+$ s=$SECONDS; sleep 3 | true; echo "took $((SECONDS - s))s"
+took 3s
+```
+
 ## Rules
 
 **Verify bash behaviour with `bash -c '…'`, never by typing the construct into the tool.** The tool's answer is zsh's answer, and the interesting cases — `${v^^}`, `PIPESTATUS`, `set -m`, array indices — are exactly where the two disagree. For the bash a macOS runner has, and what a local probe of it can and cannot settle, see [portability.md](portability.md#the-proxy-is-labelled-the-proof-is-a-run)
