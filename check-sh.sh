@@ -292,11 +292,16 @@ finding() {
 work=$(mktemp -d "${TMPDIR:-/tmp}/check-sh.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-# The code, with every heredoc body blanked and its line numbers kept: a help text or a
-# template inside a heredoc carries dispatchers, flag rows and exit lines of its own,
-# which are not this script's. The opening line stays, since it can carry code
-strip_heredocs() { # strip_heredocs FILE -> the file with heredoc bodies as empty lines
-  awk '
+# The code as the checker reads it, line numbers kept. Every heredoc body is blanked: a
+# help text or a template inside one carries dispatchers, flag rows and exit lines of its
+# own, which are not this script's. The opening line stays, since it can carry code. A
+# `<<WORD` opens a heredoc only outside quotes and comments: read inside a string as an
+# opener, it blanked the rest of the file. With 1 as the second argument the inside of
+# every single-quoted string is blanked too, for the proxy grep: such a string runs
+# nothing, so a construct it names is none of the script's. Quotes are tracked across
+# lines, since an awk or sed program spans several
+mask_code() { # mask_code FILE 0|1 -> FILE with heredoc bodies, and single-quoted text when 1, blanked
+  awk -v sq="$2" '
     inhd {
       line = $0
       if (dash) sub(/^\t+/, "", line)
@@ -304,14 +309,38 @@ strip_heredocs() { # strip_heredocs FILE -> the file with heredoc bodies as empt
       print ""
       next
     }
-    match($0, /<<-?['"'"'"]?[A-Za-z_][A-Za-z0-9_]*/) {
-      w = substr($0, RSTART, RLENGTH)
-      dash = (substr(w, 3, 1) == "-")
-      sub(/^<<-?['"'"'"]?/, "", w)
-      term = w
-      inhd = 1
+    {
+      out = ""
+      opener = ""
+      n = length($0)
+      for (i = 1; i <= n; i++) {
+        c = substr($0, i, 1)
+        if (q == "\047") {
+          if (c == "\047") { q = ""; out = out c } else out = out (sq ? " " : c)
+          continue
+        }
+        if (q == "\"") {
+          if (c == "\\") { out = out substr($0, i, 2); i++; continue }
+          if (c == "\"") q = ""
+          out = out c
+          continue
+        }
+        if (c == "\\") { out = out substr($0, i, 2); i++; continue }
+        if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) { out = out substr($0, i); break }
+        if (c == "\047" || c == "\"") { q = c; out = out c; continue }
+        if (opener == "" && substr($0, i, 2) == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
+          match(substr($0, i), /^<<-?[\047"]?[A-Za-z_][A-Za-z0-9_]*/))
+          opener = substr($0, i, RLENGTH)
+        out = out c
+      }
+      print out
+      if (opener != "") {
+        dash = (substr(opener, 3, 1) == "-")
+        sub(/^<<-?[\047"]?/, "", opener)
+        term = opener
+        inhd = 1
+      }
     }
-    { print }
   ' "$1"
 }
 
@@ -388,7 +417,9 @@ proxy_only=0
   claims_32=0
   ! printf '%s\n' "$header" | grep -q 'Needs bash 3\.2' || claims_32=1
   code="$work/code"
-  strip_heredocs "$script" >"$code"
+  mask_code "$script" 0 >"$code"
+  code_sq="$work/code_sq"
+  mask_code "$script" 1 >"$code_sq"
 
   # The dispatcher: the top-level `case "$cmd" in` … `esac`, one arm per subcommand,
   # `a | b)` split into two. The help arm and the refusal arms are not subcommands.
@@ -491,10 +522,12 @@ if ((claims_32)); then
   # sed -i takes a suffix on BSD and none on GNU, so neither spelling runs on both
   bsd="$bsd"'|se[d] (-[A-Za-z]+ )*-[A-Za-z]*i|se[d] [^|;]*--in-plac[e]|gre[p] [^|;]*--exclude-di[r]'
   bsd="$bsd"'|(^|[^-A-Za-z0-9_{$])timeou[t] [0-9]|ta[r] [^|;]*--(wildcard[s]|nul[l])'
+  # Matched in the masked text, shown as the script has it: the line numbers are the same
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
     finding "$name claims bash 3.2 but $script:$hit — a proxy grep; the proof is a run under 3.2"
-  done < <(grep -nE "$bash4|$bsd" "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed 's/^\([0-9]*\):[[:space:]]*/\1 has: /' || :)
+  done < <(grep -nE "$bash4|$bsd" "$code_sq" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 |
+    awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$code" || :)
 fi
 
 # ---- a positional parameter guarded by ${N:?} ------------------------------------
@@ -976,6 +1009,21 @@ c=$(copy comp-action)
 awk '/^  local -a subcommands$/ { skip = 1 } skip && /^  \)$/ { skip = 0; next } skip { next } { print }' "$canon/_script.sh" |
   sed "s/'1:subcommand:->subcommand'/'1:subcommand:(run stop help)'/; s/subcommand) _describe 'subcommand' subcommands ;;/subcommand) ;;/" >"$c/_script.sh"
 expect_green "$c" "a zsh completion offering its subcommands as an action list" -n script.sh -c "$c/script.sh.bash" "$c/_script.sh" "$c/script.sh"
+
+c=$(copy heredoc-in-quotes)
+# A `<<WORD` inside quotes is text, not a heredoc: read as one, it blanked the rest of the
+# file, and every subcommand and flag after it vanished from what the checker saw, so
+# the readme named subcommands the script no longer had
+plant "$c" 'HERE=' "note=\"cat <<'NOPE' is text\""
+plant "$c" 'HERE=' "note='and so is <<NOPE'"
+# shellcheck disable=SC2046
+expect_green "$c" "a copy holding <<WORD inside quotes" $(full "$c")
+
+c=$(copy literal-bash4)
+# A bash 4 construct inside single quotes is text, which a 3.2 parses happily: the proxy
+# reads what a script would run, and a single-quoted string runs nothing
+plant "$c" 'HERE=' "note='declar""e -A is bash 4'"
+expect_green "$c" "a copy naming a bash 4 construct inside single quotes" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-bash4)
 plant "$c" 'HERE=' 'false && declar'"e -A m"
