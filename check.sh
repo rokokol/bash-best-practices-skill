@@ -72,7 +72,10 @@ done
 
 check_lint() {
   echo "== the scripts parse and lint"
-  for s in "${scripts[@]}"; do bash -n "$s"; done
+  # Only this file: check-sh.sh parses every script it is given, names it, and on the
+  # macOS runner does it under the 3.2 the claim is about — and it is run on each of the
+  # others below. The gate itself is the one script it never sees
+  bash -n check.sh
   shellcheck "${scripts[@]}" "${bash_completions[@]}"
   shfmt -d -i 2 -ci "${scripts[@]}" "${bash_completions[@]}"
   # zsh is not shellcheck's language; a parse is what can be checked
