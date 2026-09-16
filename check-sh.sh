@@ -595,6 +595,19 @@ while IFS= read -r hit; do
   finding "$script:$hit — \${N:?} exits 1 with bash's message, where a missing argument is a usage error; guard it with ((\$# >= N)) || die"
 done < <(grep -nE '\$\{[0-9]+:[?]' "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed 's/^\([0-9]*\):[[:space:]]*/\1 has: /' || :)
 
+# ---- a producer piped into a reader that stops early ------------------------------
+# `grep -q` at its match, `head` at its line, `sed q` and `awk … exit` all close the pipe
+# and the producer's next write dies of SIGPIPE, which pipefail makes the status of a
+# pipeline that did its job. It is a race rather than a certainty — bash line-buffers
+# stdout, so even a few hundred bytes leave in more than one write, and which write loses
+# is a matter of scheduling — so it survives every local run and fails once in CI
+# (pitfalls.md). The fix is to read the text with <<<, which has no producer to kill
+while IFS= read -r hit; do
+  [[ -n "$hit" ]] || continue
+  finding "$script:$hit — a reader that stops early kills its producer with SIGPIPE, and pipefail makes that the pipeline's status; feed it with <<< instead"
+done < <(grep -nE '[^|]\|[[:space:]]*(gre[p] -[a-zA-Z]*q|hea[d]( |$)|se[d] -n [^|]*[0-9]q|aw[k] [^|]*exi[t])' "$code" |
+  grep -vE '^[0-9]+:[[:space:]]*#' | sed 's/^\([0-9]*\):[[:space:]]*/\1 has: /' || :)
+
 # ---- the header comment lists nothing ---------------------------------------------
 # It says why the script exists and makes the claims; what the script accepts is the
 # help's alone. A second list beside the help falls behind it — t.sh's header did, by
@@ -1087,6 +1100,12 @@ expect_green "$c" "a copy naming a bash 4 construct inside single quotes" -n scr
 c=$(copy claimed-bash4)
 plant "$c" 'HERE=' 'false && declar'"e -A m"
 expect_red "$c" "claims bash 3.2 but $c/script.sh:" "a bash 4 construct under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy early-reader)
+# A text piped into a reader that stops early: the spelling is split so this file's own
+# check does not match the line that plants it
+plant "$c" 'HERE=' 'printf "%s\n" here | gre''p -q x || :'
+expect_red "$c" "a reader that stops early kills its producer" "a text piped into grep -q" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-gnu-mktemp)
 # shellcheck disable=SC2016 # the substitution belongs to the script being written out
