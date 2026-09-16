@@ -58,6 +58,8 @@ $ bash -c 'set -euo pipefail; v=$(seq 200000); awk "NR == 1 { exit }" <<<"$v"; e
 survived
 ```
 
+A short text is no defence, and this is where the rule is usually lost: bash line-buffers stdout, so a few hundred bytes still leave in one `write()` per line, or in two where the C library coalesces, and the last of them is what meets the closed pipe. The pipeline then fails once in tens of thousands of runs instead of every time, which is how it reaches CI rather than the first test, and the spelling decides which way the error falls — `! … | grep -q` reports a finding that is not there, while `… | grep -q || flag=1` leaves a check silently switched off. The writes, the rates and the two directions are measured in [pitfalls.md](pitfalls.md#streams)
+
 ## Refusing
 
 ```sh

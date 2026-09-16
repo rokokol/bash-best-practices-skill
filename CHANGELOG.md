@@ -7,6 +7,11 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Added
 
 - `references/harness.md`: a command the agent's Bash tool runs in the background gets a socket on stdin that never reaches end of file, so anything that reads stdin waits forever there, while in the foreground stdin is `/dev/null` and the same read returns at once; and `sleep N | cmd` lasts N seconds whatever `cmd` does
+- `references/pitfalls.md`: a text far smaller than the pipe buffer still leaves in more than one `write()`, because bash line-buffers stdout whatever it is connected to and the C library decides where the cut falls — glibc at every newline, musl at the end of the body with the closing newline on its own — so `producer | grep -q` is a race whose rate is a matter of scheduling rather than a pipeline that is safe below some size. With the writes as `strace` shows them, the rates measured on both libraries, and the two directions the death takes: `! … | grep -q` reports a finding that is not there, `… | grep -q || flag=1` leaves a check switched off. `references/shape.md` carries it in the rule
+
+### Fixed
+
+- `check-sh.sh` gave every text it matched to `grep -q` through a pipe, and a `grep -q` that finds its match closes that pipe, so the producer's next write died of SIGPIPE and `pipefail` made 141 the status of a check that had passed: the checker could report a help arm, a subcommand or an exit code as missing from a script that has it, and could switch its own bash 3.2 proxy off without a word. Every such text now reaches its reader through `<<<`, and the `| head -n 1` that named the self-reading line is a `sed -n` that reads to the end. Seen once on a macOS runner in about 180 runs across six repositories
 
 ## 2026-09-15
 

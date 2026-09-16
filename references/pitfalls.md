@@ -91,6 +91,36 @@ $ printf 'a\t\tc\n' | awk -F '\t' '{ printf "[%s][%s][%s]\n", $1, $2, $3 }'
 
 It hides while the empty fields are the last ones on the line and surfaces when a column is added after them, shifting every later value left. **Never emit an empty tab-separated field — `jq`'s `// "-"` gives it a placeholder — or split the line with `awk -F '\t'`**, which does not fold
 
+**A text far smaller than the pipe buffer still leaves in more than one `write()`, so `producer | grep -q` is a race rather than a safe pipeline.** bash line-buffers stdout whatever it is connected to — `shell_initialize()` calls `sh_setlinebuf(stdout)` — and the `printf` builtin prints through `putchar`, so the C library decides where the text is cut: glibc flushes at every newline, musl writes the body in one chunk and the closing newline on its own, and the libc macOS ships flushes whenever the character is a newline and the stream is line buffered. Two writes are enough for the accident: `grep -q` matches in the first, exits, and the second meets a pipe with no reader:
+
+```console
+$ strace -f -e trace=write bash -c 'printf "%s\n" "$text" | cat >/dev/null'   # glibc, 235 bytes
+write(1, "case \"$cmd\" in\n", 15)
+write(1, "  run) cmd_run \"$@\" ;;\n", 23)
+…                                                # nine writes, one per line
+$ docker run --rm -v "$PWD:/w" bash:3.2 …        # musl, the same 235 bytes
+write(1, "case \"$cmd\" in\n  run) cmd_run \"$@\"…", 234)
+write(1, "\n", 1)
+```
+
+How often the second write loses the race is a matter of scheduling, so a short text fails rarely rather than never, which is why this reaches CI instead of the first run. The same pipeline, 300 runs each, with the pattern matching early in the text:
+
+| The text | glibc, bash 5.3 | musl, bash 3.2 |
+|---|---|---|
+| 235 bytes | 0 of 80000 | 0 of 300 |
+| 7.9 KB | 1 of 300 | 1 of 300 |
+
+A 50 ms delay in the place the scheduler occupies makes it certain, and shows the two directions the mistake takes: `! … | grep -q` reports a finding that is not there, and `… | grep -q || flag=1` silently switches a check off:
+
+```console
+$ bash -c 'set -o pipefail; { printf "%s\n" "$text"; sleep 0.05; printf "x\n"; } | grep -q "help)"; echo "status=$?"'
+status=141
+$ bash -c 'set -o pipefail; v=$text; grep -q "help)" <<<"$v"; echo "status=$?"'
+status=0
+```
+
+**Give the text to the reader with `<<<`**, which is a temporary file and has no producer to kill, and where a pipeline must stay, let the consumer read to the end — `sed -n 1p` rather than `head -1`, `!seen { … seen = 1 }` rather than `awk … exit`. Measured in the wild: one macOS CI run in about 180 across six repositories rejected a script its own self-test had just written, and the run after it passed on the same bytes
+
 ## The interpreter
 
 **bash reads a script while it runs, so an in-place rewrite lands mid-execution.** The running copy reads on from the byte offset it had reached, and in a truncated file there is nothing there:

@@ -415,7 +415,10 @@ proxy_only=0
 {
   header=$(sed -n '2,/^[^#]/p' "$script" | sed '$d')
   claims_32=0
-  ! printf '%s\n' "$header" | grep -q 'Needs bash 3\.2' || claims_32=1
+  # Every text here reaches its reader through <<<, never through a pipe: a `grep -q` that
+  # finds its match closes the pipe, and the producer's next write dies of SIGPIPE, which
+  # `pipefail` then makes the pipeline's status (shape.md, pitfalls.md)
+  ! grep -q 'Needs bash 3\.2' <<<"$header" || claims_32=1
   code="$work/code"
   mask_code "$script" 0 >"$code"
   code_sq="$work/code_sq"
@@ -439,9 +442,12 @@ proxy_only=0
     # the helper it calls, which no grep can see
     refusal=$(printf '%s\n' "$dispatch" | sed -n '/^  \([^)]* | \)\{0,1\}\*)/,/;;/p')
     [[ -n "$refusal" ]] || finding "$name's dispatcher has no *) arm to refuse an unknown subcommand"
-    [[ -z "$refusal" ]] || ! printf '%s\n' "$refusal" | grep -E '(^|[^[:alnum:]_])usage([^[:alnum:]_]|$)' | grep -qv '>&2' ||
+    usage_rows=$(grep -E '(^|[^[:alnum:]_])usage([^[:alnum:]_]|$)' <<<"$refusal" || :)
+    # Not <<<"" on an empty list: a here-string of nothing is still one empty line, which
+    # `grep -v` matches, and the finding would fire on an arm with no usage at all
+    [[ -z "$usage_rows" ]] || ! grep -qv '>&2' <<<"$usage_rows" ||
       finding "$name's *) arm prints its usage to stdout rather than stderr"
-    ! printf '%s\n' "$refusal" | grep -q '# pass-through' || open_set=1
+    ! grep -q '# pass-through' <<<"$refusal" || open_set=1
   fi
 
   # The flags: every `-x | --long)` arm, attributed to the cmd_<sub>() function it sits
@@ -477,8 +483,9 @@ proxy_only=0
   # The help arm is spelled one way, so a reader and a completion can count on all three.
   # A wrapper passes `help` through to the tool behind it, whose help is the better one,
   # so it may answer -h and --help as flags before the dispatcher instead
-  if [[ -n "$dispatch" ]] && ! printf '%s\n' "$dispatch" | grep -qE '^  -h \| --help \| help\)'; then
-    if ! { ((open_set)) && printf '%s\n' "${flags[@]+"${flags[@]}"}" | grep -qx -- $'-\t--help'; }; then
+  if [[ -n "$dispatch" ]] && ! grep -qE '^  -h \| --help \| help\)' <<<"$dispatch"; then
+    flag_rows=$(printf '%s\n' "${flags[@]+"${flags[@]}"}")
+    if ! { ((open_set)) && grep -qx -- $'-\t--help' <<<"$flag_rows"; }; then
       finding "$name's dispatcher has no -h | --help | help arm"
     fi
   fi
@@ -566,7 +573,10 @@ if ((! proxy_only)); then
   # word is skipped as one, since an awk program holds the `;` and `$` that end a match
   if piped=$("$BASH" <(cat "$script") --help 2>&1) && [[ "$piped" != "$help" ]]; then
     self_read='(sed|awk|head|tail|cat|grep|cut)[[:space:]]([^|;&$'"'"']|'"'"'[^'"'"']*'"'"')*"\$\{BASH_SOURC[E](\[0\])?\}"'
-    where=$(grep -nE "$self_read" "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | head -n 1 | sed 's/^\([0-9]*\):[[:space:]]*/ — line \1 has: /' || :)
+    # `sed -n 1s…p` rather than `| head -n 1 |`: head stops reading at its line and the
+    # grep before it dies of SIGPIPE, which pipefail makes the status — swallowed by the
+    # `|| :` here, leaving the line number silently missing from the finding
+    where=$(grep -nE "$self_read" "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed -n '1s/^\([0-9]*\):[[:space:]]*/ — line \1 has: /p' || :)
     finding "$name --help prints other text through a pipe than from the file, at exit 0: under bash <(…) it reads its own source${where:-, by a path no grep here can name}; print the help from a heredoc"
   fi
   # Per-subcommand help, where the script has it: `help SUB` for each help_<sub>() it
@@ -587,7 +597,7 @@ if ((! proxy_only)); then
   # help ⇐ dispatcher, and back
   # `NAME sub`, with any bracketed global options between — `NAME [--vault V] sub`
   for s in "${subs[@]+"${subs[@]}"}"; do
-    printf '%s\n' "$help" | grep -qE -- "(^|[^[:alnum:]_./-])${name_re}( \[[^]]*\])* ${s}([^[:alnum:]_-]|\$)" ||
+    grep -qE -- "(^|[^[:alnum:]_./-])${name_re}( \[[^]]*\])* ${s}([^[:alnum:]_-]|\$)" <<<"$help" ||
       finding "$name dispatches '$s' but its help never mentions '$name $s'"
   done
   while IFS= read -r s; do
@@ -635,7 +645,7 @@ if ((! proxy_only)); then
     grep -oE '[0-9]+' | sort -u || :)
   while IFS= read -r n; do
     [[ -n "$n" ]] || continue
-    printf '%s\n' "$codes_listed" | grep -qx -- "$n" ||
+    grep -qx -- "$n" <<<"$codes_listed" ||
       finding "$name exits $n but its help never lists $n on an Exit line"
   done < <(grep -vE '^[[:space:]]*#' "$code" |
     grep -oE '(^|[;{(&|[:space:]])exit [1-9][0-9]*[[:space:]]*(;|&&|\|\||$)' | grep -oE '[0-9]+' | sort -u)
