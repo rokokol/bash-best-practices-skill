@@ -6,9 +6,9 @@ What a script may assume about the machine it lands on, how that assumption is w
 
 **Every script says in its header which bash it needs.** An unstated floor is discovered only when the script lands on an older machine. The line is in the header comment, for the reason [shape.md](shape.md#the-header-and-the-help) gives
 
-**A script that travels declares 3.2, with exactly the text `Needs bash 3.2 and POSIX tools only`.** The wording is fixed because it is matched, not read: `check-sh.sh` turns its proxy grep on when the header matches `^# .*Needs bash 3\.2`, and a script that words the claim differently is silently unguarded
+**A script that travels declares `Needs bash 3.2 and POSIX tools only`, and the line is two claims rather than one.** `check-sh.sh` reads `Needs bash X.Y` for any X.Y and holds the script to the constructs that arrived *after* that floor, so a tool declaring 4.3 is checked for 4.4 and 5.2 and left alone about `mapfile`; `POSIX tools only` is the second claim and turns on the userland half by itself, because bash 5 from brew with a BSD `sed` around it is still a macOS machine. A header that declares neither promises nothing and is checked for neither
 
-**A tool that wants 4.0 or 5.2 declares that instead, and says why in one line.** A floor is a cost paid by every consumer, so the reason belongs beside it: `Needs bash 5.2 (a literal & in a ${s//p/r} replacement)` is a sentence a reviewer can argue with, while a bare `Needs bash 5.2` is one nobody can. A tool nobody ships to macOS is entitled to 5.2 — it is entitled to it out loud
+**A tool that wants 4.0 or 5.2 declares that instead, and says why in one line.** A floor is a cost paid by every consumer, so the reason belongs beside it: `Needs bash 5.2 (a literal & in a ${s//p/r} replacement)` is a sentence a reviewer can argue with, while a bare `Needs bash 5.2` is one nobody can. A tool nobody ships to macOS is entitled to 5.2 — it is entitled to it out loud, and the checker then stops arguing about everything below it
 
 ## What bash 3.2 does not have
 

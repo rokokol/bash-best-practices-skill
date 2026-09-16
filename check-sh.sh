@@ -37,8 +37,9 @@ with `-h | --help | help)` and a `*)` arm that sends usage to stderr, flag arms 
 help printed from a heredoc or by a `help [SUB]` subcommand, and a header comment that
 lists nothing. They are spelled out in references/shape.md and help.md of
 https://github.com/rokokol/bash-best-practices-skill. A header line claiming "Needs bash
-3.2" turns on a grep for constructs newer than 3.2 or absent from a BSD userland; a grep
-is a proxy, and the proof is a run under the real 3.2
+X.Y" turns on a grep for constructs newer than that floor, and "POSIX tools only" one for
+flags a BSD userland lacks or reads another way; a grep is a proxy, and the proof is a run
+under the bash the claim names
 
 Nothing here reaches the network
 Exit 0 when everything agrees, 1 with one `check-sh: <what>` line per finding, 2 on a
@@ -414,11 +415,22 @@ open_set=0
 proxy_only=0
 {
   header=$(sed -n '2,/^[^#]/p' "$script" | sed '$d')
-  claims_32=0
+  # The floor the header declares, as one number: 3.2 is 302, 4.3 is 403, no claim is 0.
+  # Any version is read rather than 3.2 alone, so a tool that needs 4.3 is still held to
+  # what arrived after it and nothing earlier
   # Every text here reaches its reader through <<<, never through a pipe: a `grep -q` that
   # finds its match closes the pipe, and the producer's next write dies of SIGPIPE, which
   # `pipefail` then makes the pipeline's status (shape.md, pitfalls.md)
-  ! grep -q 'Needs bash 3\.2' <<<"$header" || claims_32=1
+  # `|| :` because a header with no claim is the ordinary case, and a grep that finds
+  # nothing exits 1, which pipefail would make the substitution's status and -e would act on
+  claim=$(grep -oE 'Needs bash [0-9]+(\.[0-9]+)?' <<<"$header" | sed -n 1p || :)
+  floor=0
+  [[ -z "$claim" ]] ||
+    floor=$(awk -v v="${claim#Needs bash }" 'BEGIN { n = split(v, p, "."); print p[1] * 100 + (n > 1 ? p[2] : 0) }')
+  # The userland is a second claim and an independent one: bash 5 from brew or nix with a
+  # BSD sed around it is an ordinary macOS machine, and its flags are the ones that differ
+  posix_tools=0
+  ! grep -q 'POSIX tools only' <<<"$header" || posix_tools=1
   code="$work/code"
   mask_code "$script" 0 >"$code"
   code_sq="$work/code_sq"
@@ -476,8 +488,8 @@ proxy_only=0
   # If its header claims bash 3.2 the proxy below is still worth running, and it is all
   # that runs; with no claim either there is nothing to check, which is a refusal
   if ((${#subs[@]} + ${#flags[@]} == 0)); then
-    ((claims_32)) ||
-      die "nothing to check in $script: no case \"\$cmd\" dispatcher, no flag arms and no bash 3.2 claim — see references/shape.md"
+    ((floor || posix_tools)) ||
+      die "nothing to check in $script: no case \"\$cmd\" dispatcher, no flag arms and no bash floor or POSIX userland claim — see references/shape.md"
     proxy_only=1
   fi
   # The help arm is spelled one way, so a reader and a completion can count on all three.
@@ -515,25 +527,62 @@ known_flag() { # known_flag FLAG [SUB] -> 0 when SUB (or any parser) accepts it,
 # rejects, which is why the claim is proven by a run under /bin/bash on a macOS runner
 # and this is only the cheap first look. It runs before the help is asked for, since
 # under a real 3.2 a script holding such a construct may not parse at all
-if ((claims_32)); then
-  bash4='\[\[[^]]*[-]v [A-Za-z_]|mapfil[e] |readarra[y] |declar[e] -A|loca[l] -A|declar[e] -n|loca[l] -n'
-  bash4="$bash4"'|\$\{[A-Za-z_]+,[,]\}|\$\{[A-Za-z_]+\^[\^]\}|\$\{[A-Za-z_]+@[QEPAaKk]\}|;;[&]|[^|]\|[&][^&]|wai[t] -n'
-  # A negative length, a descriptor named by a variable, a fractional read timeout, globstar
-  bash4="$bash4"'|\$\{[A-Za-z_][A-Za-z0-9_]*:[^}:]*:[-][0-9]|(^|[^$])[{][A-Za-z_][A-Za-z0-9_]*[}][<>]|rea[d] [^;|&]*-t ?[0-9]*[.][0-9]|globsta[r]'
-  # Parsed by both, read two ways: 3.2 keeps a quoted replacement's quotes, 5.2 reads & as
-  # the match
-  bash4="$bash4"'|\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/["]|\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/[^}]*[&]'
+# Each row below is the bash a construct needs and the pattern that finds it, and a script
+# is held to the rows *above* the floor it declares: `Needs bash 4.3` is checked for 4.4
+# and 5.2 constructs and left alone about `mapfile`. The floors are bash's own NEWS, and
+# references/portability.md carries the same table in prose, for a reader rather than a grep
+version_rows() {
+  cat <<'ROWS'
+400	mapfil[e]
+400	readarra[y]
+400	declar[e] -A
+400	loca[l] -A
+400	\$\{[A-Za-z_]+,[,]\}
+400	\$\{[A-Za-z_]+\^[\^]\}
+400	;;[&]
+400	[^|]\|[&][^&]
+400	rea[d] [^;|&]*-t ?[0-9]*[.][0-9]
+400	globsta[r]
+401	(^|[^$])[{][A-Za-z_][A-Za-z0-9_]*[}][<>]
+402	\[\[[^]]*[-]v [A-Za-z_]
+402	\$\{[A-Za-z_][A-Za-z0-9_]*:[^}:]*:[-][0-9]
+403	declar[e] -n
+403	loca[l] -n
+403	wai[t] -n
+404	\$\{[A-Za-z_]+@[QEPAaKk]\}
+502	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/["]
+502	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/[^}]*[&]
+ROWS
+}
+active=''
+# No claim, no proxy: a script that declares no floor has promised nothing about where it
+# runs, and every construct below would be a finding against a promise nobody made
+if ((floor)); then
+  while IFS="$(printf '\t')" read -r need pat; do
+    [[ -n "$need" ]] || continue
+    ((need > floor)) || continue
+    active="${active:+$active|}$pat"
+  done <<<"$(version_rows)"
+fi
+# The userland is the other claim, and it stands on its own: bash 5 with a BSD sed around
+# it is a macOS machine, so `POSIX tools only` turns these on whatever the floor says
+if ((posix_tools)); then
   # A bare `mktemp -d` is fine on macOS, whose page says it "behaves as if -t tmp was
   # supplied"; the GNU flags are not, and -t means a prefix there and a template here
   bsd='sor[t] -[A-Za-z]*V|gre[p] -[A-Za-z]*P|readlin[k] -f|dat[e] -d|mktem[p] (-[dqu]+ )*(-[pt]|--tmpdir|--suffix)'
   # sed -i takes a suffix on BSD and none on GNU, so neither spelling runs on both
   bsd="$bsd"'|se[d] (-[A-Za-z]+ )*-[A-Za-z]*i|se[d] [^|;]*--in-plac[e]|gre[p] [^|;]*--exclude-di[r]'
   bsd="$bsd"'|(^|[^-A-Za-z0-9_{$])timeou[t] [0-9]|ta[r] [^|;]*--(wildcard[s]|nul[l])'
+  active="${active:+$active|}$bsd"
+fi
+if [[ -n "$active" ]]; then
+  claimed="bash ${claim#Needs bash }"
+  [[ -n "$claim" ]] || claimed="a POSIX userland"
   # Matched in the masked text, shown as the script has it: the line numbers are the same
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
-    finding "$name claims bash 3.2 but $script:$hit — a proxy grep; the proof is a run under 3.2"
-  done < <(grep -nE "$bash4|$bsd" "$code_sq" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 |
+    finding "$name claims $claimed but $script:$hit — a proxy grep; the proof is a run under it"
+  done < <(grep -nE "$active" "$code_sq" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 |
     awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$code" || :)
 fi
 

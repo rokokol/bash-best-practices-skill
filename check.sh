@@ -204,7 +204,7 @@ check_behaviour() {
   # is meant to change
   for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checker "$s"; done
 
-  echo "== the proxy catches every construct in the fixture under a 3.2 claim, and none without"
+  echo "== every construct fires under a claim below its floor, is silent at it, and silent with no claim"
   # The constructs live in a fixture rather than inline here, because spelling them in
   # this file would make the proxy match its own proof, and check.sh is itself a script
   # this gate would then have to excuse
@@ -212,8 +212,8 @@ check_behaviour() {
   # runs under a bash that parses it; under a real 3.2 some of them do not parse at all,
   # which is why the checker greps before it asks for the help
   planted_count=0
-  while IFS= read -r planted; do
-    [[ -z "$planted" || "$planted" == \#* ]] && continue
+  while IFS=$'\t' read -r need planted; do
+    [[ -z "$planted" || "$need" == \#* ]] && continue
     planted_count=$((planted_count + 1))
     checker --template >"$work/claimed.sh"
     printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/claimed.sh"
@@ -221,22 +221,35 @@ check_behaviour() {
       fail "the proxy does not catch, under a 3.2 claim: $planted"
     [[ "$out" == *"claims bash 3.2 but"*"$planted"* ]] ||
       fail "the proxy rejected '$planted' for the wrong reason: $out"
+    # And the other half of the same row: a script that declares the floor this construct
+    # needs — or drops the POSIX userland claim, for a row that is about the userland — is
+    # entitled to it, and the proxy must stay quiet. Without this the checker could be one
+    # that fires on everything, which the half above alone cannot tell apart
+    if [[ "$need" == bsd ]]; then
+      entitled='s/^\(# .*\)Needs bash 3\.2 and POSIX tools only/\1Needs bash 3.2/'
+    else
+      entitled=$(printf 's/^\\(# .*\\)Needs bash 3\\.2/\\1Needs bash %d.%d/' $((need / 100)) $((need % 100)))
+    fi
+    checker --template | sed "$entitled" >"$work/entitled.sh"
+    printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/entitled.sh"
+    out=$(checker -n script.sh "$work/entitled.sh" 2>&1) ||
+      fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
   done <tests/fixtures/bash4-constructs.sh
   ((planted_count >= 20)) || fail "only $planted_count constructs were read from the fixture — the extractor is broken"
-  # And the whole fixture at once in a script that makes no claim passes the proxy: the
-  # claim is what turns it on, so a tool that needs bash 4 can say so and use it. Under
-  # a real 3.2 such a script cannot even be parsed, so that control has nothing to say
+  # And the whole fixture at once in a script that declares nothing: a header that makes no
+  # claim has promised nothing about where it runs, so not one of these is a finding there.
+  # Under a real 3.2 such a script cannot even be parsed, so that control has nothing to say
   if ((BASH_VERSINFO[0] >= 4)); then
     {
-      # The claim as the checker finds it, `^# .*Needs bash 3\.2`, rather than the template's
-      # whole line, which is then free to change
-      checker --template | sed 's/^\(# .*\)Needs bash 3\.2.*$/\1Needs bash 4./'
+      # The claim line goes entirely, rather than being rewritten to another version, which
+      # would only move the floor and leave everything above it firing
+      checker --template | sed '/Needs bash 3\.2/d'
       printf 'planted_never_called() {\n'
-      grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh
+      grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh | cut -f2-
       printf '}\n'
     } >"$work/unclaimed.sh"
     checker -n script.sh "$work/unclaimed.sh" >/dev/null 2>&1 ||
-      fail "the proxy fired on a script that claims bash 4 — the claim is what should turn it on"
+      fail "the proxy fired on a script that declares no floor and no userland — a claim is what turns it on"
   else
     echo "   the no-claim control skipped: this bash is $BASH_VERSION and cannot parse the fixture"
   fi
@@ -289,7 +302,7 @@ check_behaviour() {
   neutered "belongs to the help alone: \$row" "a usage line in the header comment"
   # Two plants lean on the proxy — a 3.2 claim in the canonical script and in a plain one —
   # and whichever the self-test reaches first is the one that has to notice
-  neutered "claims bash 3.2 but" "a bash 4 construct"
+  neutered "claims \$claimed but" "a bash 4 construct"
   # And the count of planted defects the summary reports is the count the self-test runs:
   # a lost row would lower it while everything stayed green
   summary=$(checker templates/script.sh 2>&1 | tail -n 1)
