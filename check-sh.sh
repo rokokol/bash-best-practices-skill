@@ -619,6 +619,17 @@ while IFS= read -r row; do
 done < <(printf '%s\n' "$header" | sed 's/^# \{0,1\}//' |
   grep -E "^ +(${name_re} |--?[a-zA-Z]|[0-9]+  )|^Exit[ :]+[0-9]|^Environment:" || :)
 
+# ---- the script parses under the bash running this checker -------------------------
+# Running the help would catch a syntax error too, but only for a script that has a
+# dispatcher to run: a plain one, checked by the proxy alone, is never executed. And on a
+# macOS runner this bash is the 3.2 a `Needs bash 3.2` claim is about, so the parse is the
+# cheapest proof that claim has. Nothing below can be trusted about a file bash cannot
+# read, so the help half is skipped once this fires
+if ! parse=$("$BASH" -n "$script" 2>&1); then
+  finding "$name does not parse under the bash running this checker: ${parse##*: }"
+  proxy_only=1
+fi
+
 # ---- the help ---------------------------------------------------------------------
 if ((! proxy_only)); then
   # Run under the bash running this checker, not the one the shebang finds: on a macOS
@@ -1100,6 +1111,12 @@ expect_green "$c" "a copy naming a bash 4 construct inside single quotes" -n scr
 c=$(copy claimed-bash4)
 plant "$c" 'HERE=' 'false && declar'"e -A m"
 expect_red "$c" "claims bash 3.2 but $c/script.sh:" "a bash 4 construct under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy unparsable)
+# A file bash cannot read at all: the help run would catch it only where there is a
+# dispatcher to run, and the message would name the help rather than the syntax
+printf 'if then\n' >>"$c/script.sh"
+expect_red "$c" "does not parse under the bash running this checker" "a script with a syntax error" -n script.sh "$c/script.sh"
 
 c=$(copy early-reader)
 # A text piped into a reader that stops early: the spelling is split so this file's own

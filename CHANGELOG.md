@@ -11,6 +11,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Added
 
+- `check-sh.sh` reports a script the bash running it cannot parse, and stops there rather than reporting the help it could not obtain. Running the help caught a syntax error only where there was a dispatcher to run — a plain script checked by the proxy alone was never executed — and on a macOS runner the bash running the checker is the 3.2 a `Needs bash 3.2` claim is about, which makes the parse the cheapest proof that claim has
 - `check-sh.sh` reports a producer piped into a reader that stops early — `grep -q` at its match, `head` at its line, `sed q`, `awk … exit` — because the producer's next write then dies of SIGPIPE and `pipefail` makes that the status of a pipeline that did its job. It is a race rather than a certainty, so it survives every local run and fails once in CI, which is exactly how it reached six repositories; the fix the finding names is `<<<`, which has no producer to kill. Planted in the self-test like every other check, and measured in `references/pitfalls.md`
 
 ### Changed
