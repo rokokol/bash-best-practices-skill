@@ -51,6 +51,24 @@ Try `pgrep -f' option to match against the complete command line.
 
 **`pgrep -f` is the way out, and it matches argv as it was written rather than as it resolves**, so a child started from a relative path is invisible to its absolute one — `pgrep -f /tmp/w/very-long-sleeper-name` exits 1 where `pgrep -f './very-long-sleeper-name'` prints the PID; a supervisor either remembers how it started the child or, better, keeps the PID
 
+**A trapped signal waits for the command bash is in, and one expansion can last minutes.** bash notes the signal and runs the trap between commands, so a script that traps TERM for its cleanup is not stopped by TERM while a single long expansion runs, and a watchdog's TERM takes effect only when that expansion ends. Untrapped, TERM kills at once, and KILL cannot be trapped at all:
+
+```console
+$ for how in 'TERM, no trap' 'TERM, trapped' 'KILL, trapped'; do
+>   trap=''; [[ $how == *trapped ]] && trap='trap "exit 0" TERM'
+>   bash -c "$trap"'
+>     t=$(awk "BEGIN { for (i = 0; i < 8000; i++) printf \"line %05d of filler text\n\", i; print \"needle\" }")
+>     : "${t#*needle}"' &
+>   sleep 2; s=$SECONDS; kill -"${how%%,*}" $!; wait $! 2>/dev/null
+>   echo "$how: gone $((SECONDS - s)) s after the signal"
+> done
+TERM, no trap: gone 0 s after the signal
+TERM, trapped: gone 19 s after the signal
+KILL, trapped: gone 0 s after the signal
+```
+
+`bash:3.2` answers 0, 35 and 0 s. **A watchdog that must stop a bash script on time sends KILL**, and gives up the cleanup the trap would have done, which is acceptable only where what the run leaves behind is thrown away, such as a fixture under a work directory; where the cleanup matters, keep the long work out of a single expansion instead
+
 ## Streams
 
 **A command that reads stdin inside a `while read` loop eats the loop's input.** The loop below is the obvious way to visit every line, and it visits one:
@@ -176,6 +194,25 @@ exit=1
 `docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment
 
 **Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever. **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
+
+**Every removal pattern costs the square of the string's length, the anchored one too.** `${t#*needle}` and `${t%%needle*}` both try the pattern at each position against the rest of the string, so four times the text costs sixteen times as much; the suffix form only has the smaller constant, which one timing at one size reads as a different order. A containment test stays linear:
+
+```console
+$ for n in 2000 8000; do
+>   t=$(awk -v n=$n 'BEGIN { for (i = 0; i < n; i++) printf "line %05d of filler text\n", i; print "needle" }')
+>   TIMEFORMAT="$n lines  prefix removal  %3R s"; time : "${t#*needle}"
+>   TIMEFORMAT="$n lines  suffix removal  %3R s"; time : "${t%%needle*}"
+>   TIMEFORMAT="$n lines  containment     %3R s"; time [[ $t == *needle* ]]
+> done
+2000 lines  prefix removal  1.283 s
+2000 lines  suffix removal  0.009 s
+2000 lines  containment     0.000 s
+8000 lines  prefix removal  20.691 s
+8000 lines  suffix removal  0.156 s
+8000 lines  containment     0.001 s
+```
+
+`bash:3.2` grows the same way: 2.351 to 37.469 s for the prefix, 0.066 to 1.024 s for the suffix, 0.001 to 0.003 s for containment, and a substring `${t:n}` and a length `${#t}` measured alongside grew about fourfold. **To find where a string sits in a large text, halve the length of a prefix that still contains it** — `[[ ${t:0:mid} == *"$s"* ]]` — which is log2 of the length in linear steps, and judge any claim of linearity by the ratio between two sizes, never by one timing
 
 ## The tools around it
 
