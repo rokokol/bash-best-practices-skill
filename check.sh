@@ -232,8 +232,14 @@ check_behaviour() {
     fi
     checker --template | sed "$entitled" >"$work/entitled.sh"
     printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/entitled.sh"
-    out=$(checker -n script.sh "$work/entitled.sh" 2>&1) ||
-      fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
+    # A copy this bash cannot parse says nothing about the proxy. The catching half above
+    # runs anywhere, because the checker greps before it asks for the help; this half needs
+    # the copy's own --help to run, and under the 3.2 macOS ships a 4.x construct is a
+    # syntax error rather than a finding — which the macOS job read as the proxy firing
+    if "$BASH" -n "$work/entitled.sh" 2>/dev/null; then
+      out=$(checker -n script.sh "$work/entitled.sh" 2>&1) ||
+        fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
+    fi
   done <tests/fixtures/bash4-constructs.sh
   ((planted_count >= 20)) || fail "only $planted_count constructs were read from the fixture — the extractor is broken"
   # And the whole fixture at once in a script that declares nothing: a header that makes no
