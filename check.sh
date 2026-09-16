@@ -48,6 +48,10 @@ fail() {
 # the shebang finds: on a macOS runner the gate is started as `/bin/bash ./check.sh` to
 # prove the checker on the 3.2 that macOS ships, while `env bash` would find Homebrew's 5.
 checker() { "$BASH" "$HERE/check-sh.sh" "$@"; }
+# The same copy under the same bash and tools proves itself once per run — the self-test is
+# 98% of a call, 3.8 s of 3.9 — so every call after the first that is not about the
+# self-test runs the checks alone, which is what CHECK_SH_NESTED=1 is documented for
+checks() { CHECK_SH_NESTED=1 checker "$@"; }
 
 # With a template, so a crashed run's leftovers say whose they are
 work=$(mktemp -d "${TMPDIR:-/tmp}/check.XXXXXX")
@@ -195,21 +199,21 @@ check_lint() {
 
 check_behaviour() {
   echo "== the checker holds this skill's own scripts to the form, itself first"
-  # check-sh.sh proves every one of its checks able to fail on each run, on a canonical
-  # script with one defect planted, so running it is both the gate on these scripts and
-  # the falsification of the checker
+  # check-sh.sh proves every one of its checks able to fail on a canonical script with one
+  # defect planted, so its first run here is both the gate on itself and the falsification
+  # of the checker; the calls after it hold the other scripts to the form with checks()
   # Its own documents included: every `check-sh.sh …` span in SKILL.md and the readme must
   # spell flags it parses
-  checker -m SKILL.md -d README.md check-sh.sh
-  checker -e SCRIPT_ -c templates/completions/script.sh.bash templates/completions/_script.sh templates/script.sh
+  checker -e CHECK_SH_ -m SKILL.md -d README.md check-sh.sh
+  checks -e SCRIPT_ -c templates/completions/script.sh.bash templates/completions/_script.sh templates/script.sh
   # vendor-sync.sh was red on the checker's first run, for a real reason: its dispatcher
   # spelled the help arm `-h | --help)` without `help`. The fix went to its source in
   # https://github.com/rokokol/ci-skill and the cascade brought it here, which is how a copy
   # is meant to change
-  for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checker "$s"; done
+  for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checks "$s"; done
   # The gate itself: it has no dispatcher and no flag arms, so the checker reads it by the
   # proxy alone — which is the parse, and the bash 3.2 claim its header now makes
-  checker check.sh
+  checks check.sh
 
   echo "== every construct fires under a claim below its floor, is silent at it, and silent with no claim"
   # The constructs live in a fixture rather than inline here, because spelling them in
@@ -224,7 +228,7 @@ check_behaviour() {
     planted_count=$((planted_count + 1))
     checker --template >"$work/claimed.sh"
     printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/claimed.sh"
-    out=$(checker -n script.sh "$work/claimed.sh" 2>&1) &&
+    out=$(checks -n script.sh "$work/claimed.sh" 2>&1) &&
       fail "the proxy does not catch, under a 3.2 claim: $planted"
     [[ "$out" == *"claims bash 3.2 but"*"$planted"* ]] ||
       fail "the proxy rejected '$planted' for the wrong reason: $out"
@@ -244,7 +248,7 @@ check_behaviour() {
     # the copy's own --help to run, and under the 3.2 macOS ships a 4.x construct is a
     # syntax error rather than a finding — which the macOS job read as the proxy firing
     if "$BASH" -n "$work/entitled.sh" 2>/dev/null; then
-      out=$(checker -n script.sh "$work/entitled.sh" 2>&1) ||
+      out=$(checks -n script.sh "$work/entitled.sh" 2>&1) ||
         fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
     fi
   done <tests/fixtures/bash4-constructs.sh
@@ -261,7 +265,7 @@ check_behaviour() {
       grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh | cut -f2-
       printf '}\n'
     } >"$work/unclaimed.sh"
-    checker -n script.sh "$work/unclaimed.sh" >/dev/null 2>&1 ||
+    checks -n script.sh "$work/unclaimed.sh" >/dev/null 2>&1 ||
       fail "the proxy fired on a script that declares no floor and no userland — a claim is what turns it on"
   else
     echo "   the no-claim control skipped: this bash is $BASH_VERSION and cannot parse the fixture"
