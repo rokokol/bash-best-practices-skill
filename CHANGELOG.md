@@ -16,6 +16,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Changed
 
+- `check.sh` parses nothing itself: `check-sh.sh` is handed every script the repository ships, the gate included, and parsing is one of the things it reports. The gate's header makes the bash 3.2 claim its behaviour half has always run under, which is what lets the checker read it at all
 - `check-sh.sh` reads any floor a header declares — `Needs bash X.Y` for any version, not 3.2 alone — and holds the script only to the constructs that arrived after it, so a tool declaring 4.3 is checked for 4.4 and 5.2 and left alone about `mapfile`. `POSIX tools only` became the second, independent claim and turns the BSD-userland half on by itself, which a script declaring bash 5.2 and a POSIX userland never got before. A header that declares neither is checked for neither, as before. Each construct carries its floor in one list in the checker, the fixture carries the same floors, and the gate now plants every construct twice: under a claim below its floor, where it must fire, and under the floor itself, where it must stay quiet — the half that tells a proxy apart from one that fires on everything
 
 ### Fixed

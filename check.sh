@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # A check that has never failed is a decoration, and this skill hands its checker to other
 # repositories
+# Needs bash 3.2 and POSIX tools only, so behaviour mode runs unchanged under the bash a
+# macOS runner has
 set -euo pipefail
 
 usage() {
@@ -72,10 +74,9 @@ done
 
 check_lint() {
   echo "== the scripts parse and lint"
-  # Only this file: check-sh.sh parses every script it is given, names it, and on the
-  # macOS runner does it under the 3.2 the claim is about — and it is run on each of the
-  # others below. The gate itself is the one script it never sees
-  bash -n check.sh
+  # No `bash -n` loop: check-sh.sh parses every script it is handed, names it, and on the
+  # macOS runner does it under the 3.2 the claim is about. It is handed every script this
+  # repository ships, the gate included, so nothing is left for a loop here
   shellcheck "${scripts[@]}" "${bash_completions[@]}"
   shfmt -d -i 2 -ci "${scripts[@]}" "${bash_completions[@]}"
   # zsh is not shellcheck's language; a parse is what can be checked
@@ -206,6 +207,9 @@ check_behaviour() {
   # https://github.com/rokokol/ci-skill and the cascade brought it here, which is how a copy
   # is meant to change
   for s in check-skill.sh check-pins.sh check-changelog.sh vendor-sync.sh; do checker "$s"; done
+  # The gate itself: it has no dispatcher and no flag arms, so the checker reads it by the
+  # proxy alone — which is the parse, and the bash 3.2 claim its header now makes
+  checker check.sh
 
   echo "== every construct fires under a claim below its floor, is silent at it, and silent with no claim"
   # The constructs live in a fixture rather than inline here, because spelling them in
