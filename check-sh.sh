@@ -297,11 +297,15 @@ trap 'rm -rf "$work"' EXIT
 # help text or a template inside one carries dispatchers, flag rows and exit lines of its
 # own, which are not this script's. The opening line stays, since it can carry code. A
 # `<<WORD` opens a heredoc only outside quotes and comments: read inside a string as an
-# opener, it blanked the rest of the file. With 1 as the second argument the inside of
-# every single-quoted string is blanked too, for the proxy grep: such a string runs
-# nothing, so a construct it names is none of the script's. Quotes are tracked across
-# lines, since an awk or sed program spans several
-mask_code() { # mask_code FILE 0|1 -> FILE with heredoc bodies, and single-quoted text when 1, blanked
+# opener, it blanked the rest of the file. With 1 the inside of every single-quoted string
+# is blanked too: single quotes suppress every expansion, so what they hold runs nothing
+# and a construct named there is none of the script's. With 2 double-quoted text goes as
+# well, and that copy is for the command-shaped patterns alone — a `declare -A` inside a
+# message is prose, and a gate proving a bash is 3.2 has to write it. The expansion-shaped
+# patterns keep reading double quotes, because `echo "${v,,}"` is a use and not a mention:
+# double quotes suppress nothing. Quotes are tracked across lines, since an awk or sed
+# program spans several
+mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1, double too at 2
   awk -v sq="$2" '
     inhd {
       line = $0
@@ -317,13 +321,13 @@ mask_code() { # mask_code FILE 0|1 -> FILE with heredoc bodies, and single-quote
       for (i = 1; i <= n; i++) {
         c = substr($0, i, 1)
         if (q == "\047") {
-          if (c == "\047") { q = ""; out = out c } else out = out (sq ? " " : c)
+          if (c == "\047") { q = ""; out = out c } else out = out (sq >= 1 ? " " : c)
           continue
         }
         if (q == "\"") {
-          if (c == "\\") { out = out substr($0, i, 2); i++; continue }
-          if (c == "\"") q = ""
-          out = out c
+          if (c == "\\") { out = out (sq >= 2 ? "  " : substr($0, i, 2)); i++; continue }
+          if (c == "\"") { q = ""; out = out c; continue }
+          out = out (sq >= 2 ? " " : c)
           continue
         }
         if (c == "\\") { out = out substr($0, i, 2); i++; continue }
@@ -435,6 +439,10 @@ proxy_only=0
   mask_code "$script" 0 >"$code"
   code_sq="$work/code_sq"
   mask_code "$script" 1 >"$code_sq"
+  # A third copy with double-quoted text blanked as well, for the patterns that look for a
+  # command rather than an expansion: see mask_code's comment for why the two differ
+  code_dq="$work/code_dq"
+  mask_code "$script" 2 >"$code_dq"
 
   # The dispatcher: the top-level `case "$cmd" in` … `esac`, one arm per subcommand,
   # `a | b)` split into two. The help arm and the refusal arms are not subcommands.
@@ -531,37 +539,47 @@ known_flag() { # known_flag FLAG [SUB] -> 0 when SUB (or any parser) accepts it,
 # is held to the rows *above* the floor it declares: `Needs bash 4.3` is checked for 4.4
 # and 5.2 constructs and left alone about `mapfile`. The floors are bash's own NEWS, and
 # references/portability.md carries the same table in prose, for a reader rather than a grep
+# The middle column says which copy of the code the pattern is read in. `cmd` is a command,
+# which a string only names — `fail "this bash accepts declare -A"` is prose, and a gate
+# proving a bash is 3.2 has to write that sentence — so those are matched where quoted text
+# is blanked. `exp` is an expansion, which double quotes do not suppress: `echo "${v,,}"`
+# lowercases at runtime, so those keep reading inside them
 version_rows() {
   cat <<'ROWS'
-400	mapfil[e]
-400	readarra[y]
-400	declar[e] -A
-400	loca[l] -A
-400	\$\{[A-Za-z_]+,[,]\}
-400	\$\{[A-Za-z_]+\^[\^]\}
-400	;;[&]
-400	[^|]\|[&][^&]
-400	rea[d] [^;|&]*-t ?[0-9]*[.][0-9]
-400	globsta[r]
-401	(^|[^$])[{][A-Za-z_][A-Za-z0-9_]*[}][<>]
-402	\[\[[^]]*[-]v [A-Za-z_]
-402	\$\{[A-Za-z_][A-Za-z0-9_]*:[^}:]*:[-][0-9]
-403	declar[e] -n
-403	loca[l] -n
-403	wai[t] -n
-404	\$\{[A-Za-z_]+@[QEPAaKk]\}
-502	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/["]
-502	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/[^}]*[&]
+400	cmd	(^|[^-A-Za-z0-9_])mapfil[e][[:space:]]
+400	cmd	(^|[^-A-Za-z0-9_])readarra[y][[:space:]]
+400	cmd	(^|[^-A-Za-z0-9_])declar[e] -A
+400	cmd	(^|[^-A-Za-z0-9_])loca[l] -A
+400	exp	\$\{[A-Za-z_]+,[,]\}
+400	exp	\$\{[A-Za-z_]+\^[\^]\}
+400	cmd	;;[&]
+400	cmd	[^|]\|[&][^&]
+400	cmd	(^|[^-A-Za-z0-9_])rea[d] [^;|&]*-t ?[0-9]*[.][0-9]
+400	cmd	(^|[^-A-Za-z0-9_])globsta[r]
+401	cmd	(^|[^$])[{][A-Za-z_][A-Za-z0-9_]*[}][<>]
+402	exp	\[\[[^]]*[-]v [A-Za-z_]
+402	exp	\$\{[A-Za-z_][A-Za-z0-9_]*:[^}:]*:[-][0-9]
+403	cmd	(^|[^-A-Za-z0-9_])declar[e] -n
+403	cmd	(^|[^-A-Za-z0-9_])loca[l] -n
+403	cmd	(^|[^-A-Za-z0-9_])wai[t] -n
+404	exp	\$\{[A-Za-z_]+@[QEPAaKk]\}
+502	exp	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/["]
+502	exp	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/[^}]*[&]
 ROWS
 }
-active=''
+active_cmd=''
+active_exp=''
 # No claim, no proxy: a script that declares no floor has promised nothing about where it
 # runs, and every construct below would be a finding against a promise nobody made
 if ((floor)); then
-  while IFS="$(printf '\t')" read -r need pat; do
+  while IFS="$(printf '\t')" read -r need kind pat; do
     [[ -n "$need" ]] || continue
     ((need > floor)) || continue
-    active="${active:+$active|}$pat"
+    if [[ "$kind" == cmd ]]; then
+      active_cmd="${active_cmd:+$active_cmd|}$pat"
+    else
+      active_exp="${active_exp:+$active_exp|}$pat"
+    fi
   done <<<"$(version_rows)"
 fi
 # The userland is the other claim, and it stands on its own: bash 5 with a BSD sed around
@@ -573,17 +591,24 @@ if ((posix_tools)); then
   # sed -i takes a suffix on BSD and none on GNU, so neither spelling runs on both
   bsd="$bsd"'|se[d] (-[A-Za-z]+ )*-[A-Za-z]*i|se[d] [^|;]*--in-plac[e]|gre[p] [^|;]*--exclude-di[r]'
   bsd="$bsd"'|(^|[^-A-Za-z0-9_{$])timeou[t] [0-9]|ta[r] [^|;]*--(wildcard[s]|nul[l])'
-  active="${active:+$active|}$bsd"
+  active_cmd="${active_cmd:+$active_cmd|}$bsd"
 fi
-if [[ -n "$active" ]]; then
+# Matched in the masked text, shown as the script has it: the line numbers are the same
+proxy_hits() { # proxy_hits REGEX CORPUS -> `LINE has: text` for each match outside a comment
+  [[ -n "$1" ]] || return 0
+  grep -nE "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 |
+    awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$code" || :
+}
+if [[ -n "$active_cmd$active_exp" ]]; then
   claimed="bash ${claim#Needs bash }"
   [[ -n "$claim" ]] || claimed="a POSIX userland"
-  # Matched in the masked text, shown as the script has it: the line numbers are the same
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
     finding "$name claims $claimed but $script:$hit — a proxy grep; the proof is a run under it"
-  done < <(grep -nE "$active" "$code_sq" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 |
-    awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$code" || :)
+  done < <({
+    proxy_hits "$active_cmd" "$code_dq"
+    proxy_hits "$active_exp" "$code_sq"
+  } | sort -n -u)
 fi
 
 # ---- a positional parameter guarded by ${N:?} ------------------------------------
@@ -1107,6 +1132,12 @@ c=$(copy literal-bash4)
 # reads what a script would run, and a single-quoted string runs nothing
 plant "$c" 'HERE=' "note='declar""e -A is bash 4'"
 expect_green "$c" "a copy naming a bash 4 construct inside single quotes" -n script.sh "$c/script.sh"
+
+c=$(copy literal-bash4-double)
+# The same inside double quotes, which is where a message says it: a gate proving a bash
+# is 3.2 has to print the construct's name, and the proxy read that sentence as a use
+plant "$c" 'HERE=' "note=\"this bash accepts declar""e -A\""
+expect_green "$c" "a copy naming a bash 4 construct inside double quotes" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-bash4)
 plant "$c" 'HERE=' 'false && declar'"e -A m"

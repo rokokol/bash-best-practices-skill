@@ -20,6 +20,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Fixed
 
+- `check-sh.sh`'s bash floor proxy read the inside of a double-quoted string as code, so a script naming a construct in a message — `fail "this bash accepts declare -A"`, or a marker set called `bash4-mapfile` — was reported for using it. Single-quoted text was already blanked; double-quoted text is now blanked the same way, and the patterns for bare builtins require a word boundary, so `bash4-mapfile` is no longer a `mapfile`. A construct genuinely run from a string, as `eval "declare -A m"`, stays invisible, as it already was inside single quotes — no grep decides what a string will become. Both spellings are planted in the self-test
 - `check-sh.sh` gave every text it matched to `grep -q` through a pipe, and a `grep -q` that finds its match closes that pipe, so the producer's next write died of SIGPIPE and `pipefail` made 141 the status of a check that had passed: the checker could report a help arm, a subcommand or an exit code as missing from a script that has it, and could switch its own bash 3.2 proxy off without a word. Every such text now reaches its reader through `<<<`, and the `| head -n 1` that named the self-reading line is a `sed -n` that reads to the end. Seen once on a macOS runner in about 180 runs across six repositories
 
 ## 2026-09-15
