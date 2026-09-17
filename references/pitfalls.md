@@ -205,6 +205,17 @@ exit=1
 
 `docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment
 
+**`cmd && action` as the last command of a function ends a `set -e` script in silence.** `set -e` ignores a failure on the left of `&&`, so at the top level a `grep` that finds nothing just moves on. As a function's last command the same line's status is the function's, and the call is a plain command that `set -e` does act on:
+
+```console
+$ printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'check() {' '  echo "checking"' '  grep -q never /dev/null && echo "found"' '}' 'check' 'echo "all checks passed"' > e.sh
+$ bash e.sh; echo "exit=$?"
+checking
+exit=1
+```
+
+`bash:3.2` answers identically. It bites when sections of a script move into functions — a gate split into halves — because a line that was harmless at the top level becomes a function's status without being touched. **Write the guard as `if cmd; then action; fi`**, whose status is 0 when `cmd` fails
+
 **Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever. **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
 
 **Every removal pattern costs the square of the string's length, the anchored one too.** `${t#*needle}` and `${t%%needle*}` both try the pattern at each position against the rest of the string, so four times the text costs sixteen times as much; the suffix form only has the smaller constant, which one timing at one size reads as a different order. A containment test stays linear:

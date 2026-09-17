@@ -8,6 +8,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 - `check-sh.sh` reports a heredoc opened inside `$( )`, `<( )` or `>( )` in a script claiming a bash below 4.0. bash 3.2 reads the heredoc's body as code while it looks for the end of the substitution, so an unpaired `)` there quietly changes the value and an unpaired `'` stops the script parsing, and `bash -n` under 3.2 passes the first. The usual spelling opens the substitution on the line before, so the checker follows open substitutions across lines rather than matching one; `references/portability.md` carries the reproduction and the row
 - `references/pitfalls.md`: an INT ignored before the script started stays ignored — `set -m` gives nothing back, and `trap - INT` resets it in bash 5.3 but not in 4.4, 3.2, dash or busybox sh, as POSIX's `trap` requires — so a check that sends a real INT reads green in a terminal and red under `&`. `references/sources.md` no longer says no `trap` in the child can undo the ignore, which bash 5.3 contradicts
+- `references/pitfalls.md`: `cmd && action` as the last command of a function makes a failing `cmd` the function's status, and `set -e` then ends the script at the call with no message, under bash 5.3 and 3.2 alike, where the same line at the top level is ignored. It bites when a script's sections move into functions; the guard is written `if cmd; then action; fi`
 
 ### Changed
 
