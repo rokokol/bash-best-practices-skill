@@ -12,6 +12,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Changed
 
 - `check-sh.sh --help` says the first call of every run keeps the self-test, since it is what notices a copy that stopped catching defects and the bash and tools under a copy change without the copy changing; `SKILL.md` points a gate calling the checker more than once at that paragraph
+- `check-sh.sh --help` says a call with a finding exits before the self-test, so the call a gate keeps it on has to be one that passes, and `CHECK_SH_NESTED=1` saves nothing on a call meant to go red
 
 ### Fixed
 
