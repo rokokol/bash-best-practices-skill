@@ -12,6 +12,18 @@ plain &: child exit=0
 set -m:  child exit=130
 ```
 
+**An ignore inherited from before the script started stays, whatever the script does.** A script run from a job that was itself started with `&` gets INT already ignored: `set -m` gives nothing back then, and `trap - INT` restores the default in bash 5.3 but not in bash 4.4, 3.2, dash 0.5.13 or busybox sh, which keep to POSIX's rule that a non-interactive shell cannot reset a signal ignored on entry. A check that sends a real INT to a child reads green in a terminal and red under `&`. One that only reads the status writes `exit 130`, which no disposition changes; one that needs the signal itself sends it to a child `sh` first and refuses to run when the child survives, rather than going red on correct code:
+
+```console
+$ docker run --rm bash:4.4 sh -c 'bash -c '\''sh -c "kill -INT \$\$"; echo "plain:      $?"; (set -m; sh -c "kill -INT \$\$" & wait $!; echo "set -m:     $?"); bash -c "trap - INT; kill -INT \$\$"; echo "trap - INT: $?"'\'' & wait'
+plain:      0
+[1]+  Done                    sh -c "kill -INT \$\$"
+set -m:     0
+trap - INT: 0
+```
+
+The same line with `bash:5` prints `trap - INT: 130` and nothing else changes
+
 **A re-raised signal still runs the EXIT trap.** The handler idiom is clean up, reset the trap, re-raise, and it is easy to assume the script then dies without EXIT running:
 
 ```console
