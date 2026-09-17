@@ -2,7 +2,7 @@
 # Tab completion for script.sh in zsh. Hand-written on purpose and drift-checked by
 # machine: check-sh.sh -c holds every word here to the script's dispatcher and parsers.
 # The #compdef line binds it when the file sits on $fpath as _script.sh, and the last
-# line calls the function, which is the autoload convention.
+# line calls the function, which is the autoload convention
 _script_sh() {
   local -a subcommands
   subcommands=(

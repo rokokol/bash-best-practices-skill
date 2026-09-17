@@ -14,8 +14,7 @@ dispatcher has, every flag its parsers take, every variable it reads and every c
 exits with must be in the help — and every document and completion that restates a list
 is held to the same code, in both directions. Each check is proven able to fail on every
 run, on a canonical script with one defect planted, so a copy falsifies itself wherever
-it runs. It has no repo-specific part: a repository takes it through the vendoring
-cascade and calls it from its own gate
+it runs. It has no repo-specific part, and belongs in a repository's own gate
 
   check-sh.sh [-n NAME] [-e PREFIX] [-d DOC]... [-m DOC]... [-c BASH ZSH] SCRIPT
   check-sh.sh --template [script|bash|zsh]
@@ -157,7 +156,7 @@ template_bash() {
 # Tab completion for script.sh in bash. Hand-written on purpose and drift-checked by
 # machine: check-sh.sh -c holds every word here to the script's dispatcher and parsers.
 # Builtins only, so it works without the bash-completion package and under the bash 3.2
-# a stock macOS sources it with.
+# a stock macOS sources it with
 _script_sh() {
   local cur prev words
   cur="${COMP_WORDS[COMP_CWORD]}"
@@ -193,7 +192,7 @@ template_zsh() {
 # Tab completion for script.sh in zsh. Hand-written on purpose and drift-checked by
 # machine: check-sh.sh -c holds every word here to the script's dispatcher and parsers.
 # The #compdef line binds it when the file sits on $fpath as _script.sh, and the last
-# line calls the function, which is the autoload convention.
+# line calls the function, which is the autoload convention
 _script_sh() {
   local -a subcommands
   subcommands=(

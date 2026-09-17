@@ -2,7 +2,7 @@
 # Tab completion for script.sh in bash. Hand-written on purpose and drift-checked by
 # machine: check-sh.sh -c holds every word here to the script's dispatcher and parsers.
 # Builtins only, so it works without the bash-completion package and under the bash 3.2
-# a stock macOS sources it with.
+# a stock macOS sources it with
 _script_sh() {
   local cur prev words
   cur="${COMP_WORDS[COMP_CWORD]}"

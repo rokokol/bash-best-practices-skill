@@ -4,6 +4,11 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-17
 
+### Fixed
+
+- `check-sh.sh --help` no longer repeats where the file comes from and how a copy of it changes: the header owns that fact, and the help keeps only what a caller acts on, that the script has no repo-specific part and belongs in a repository's own gate. It matters here more than anywhere, since this is the file that holds the rest of the family to that rule and its own help is the example every reader of the skill studies
+- the header comments of `templates/completions/script.sh.bash` and `templates/completions/_script.sh` ended their paragraph with a full stop, where `templates/script.sh` beside them ends bare. Both are held byte-equal to `check-sh.sh --template bash` and `--template zsh`, so the fix lands in the templates and in `check-sh.sh` together
+
 ### Added
 
 - `check-sh.sh` reports a heredoc opened inside `$( )`, `<( )` or `>( )` in a script claiming a bash below 4.0. bash 3.2 reads the heredoc's body as code while it looks for the end of the substitution, so an unpaired `)` there quietly changes the value and an unpaired `'` stops the script parsing, and `bash -n` under 3.2 passes the first. The usual spelling opens the substitution on the line before, so the checker follows open substitutions across lines rather than matching one; `references/portability.md` carries the reproduction and the row
