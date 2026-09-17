@@ -111,12 +111,12 @@ The idiom opens the substitution on the line before the heredoc, so no one-line 
 
 ```sh
 # on a macOS runner, from templates/github/workflows/macos.yml
-/bin/bash ./check.sh behaviour     # not `env bash`, which finds Homebrew's 5
+/bin/bash ./check.sh behaviour     # not `env bash`, which finds whatever bash is first on PATH
 # locally, before pushing
 docker run --rm -v "$PWD":/w -w /w -e CHECK_BASH32=1 bash:3.2 bash ./check.sh behaviour
 ```
 
-`env bash` on a macOS runner resolves to Homebrew's bash 5 and proves nothing about `/bin/bash`, which is why the gate is invoked by absolute path and runs every nested script under `"$BASH"`. The job first checks the claim it is about — `((BASH_VERSINFO[0] == 3))` and `! "$BASH" -c 'declare -A m'` — then plants a `declare -A` and a `mapfile` in copies that must fail there, so a green run means the interpreter was asked. The `bash:3.2` image proves the interpreter and nothing else: its `grep` and `tar` are busybox, which reject GNU options a BSD userland accepts and accept some a BSD one does not. **The workflow exists if and only if some script in the repository declares 3.2**: `macos.yml` is that assertion's badge, and a repository with nothing claiming 3.2 has nothing to prove and carries no file
+`env bash` resolves to whichever bash is first on `PATH`, and on a Mac with Homebrew's or nix's bash that is 5, which proves nothing about `/bin/bash` — so the gate is invoked by absolute path and runs every nested script under `"$BASH"`, and the proof holds wherever it runs. The GitHub `macos` images themselves carry only 3.2: their [software list](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md) reads `Bash 3.2.57(1)-release`, produced by running `bash` from the image's own `PATH` in [SoftwareReport.Common.psm1](https://github.com/actions/runner-images/blob/main/images/macos/scripts/docs-gen/SoftwareReport.Common.psm1). The job first checks the claim it is about — `((BASH_VERSINFO[0] == 3))` and `! "$BASH" -c 'declare -A m'` — then plants a `declare -A` and a `mapfile` in copies that must fail there, so a green run means the interpreter was asked. The `bash:3.2` image proves the interpreter and nothing else: its `grep` and `tar` are busybox, which reject GNU options a BSD userland accepts and accept some a BSD one does not. **The workflow exists if and only if some script in the repository declares 3.2**: `macos.yml` is that assertion's badge, and a repository with nothing claiming 3.2 has nothing to prove and carries no file
 
 ## Probe the mechanism, never a proxy
 

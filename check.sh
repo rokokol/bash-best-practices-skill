@@ -46,7 +46,8 @@ fail() {
 
 # Every check-sh.sh below runs under the bash running this gate, not under whatever bash
 # the shebang finds: on a macOS runner the gate is started as `/bin/bash ./check.sh` to
-# prove the checker on the 3.2 that macOS ships, while `env bash` would find Homebrew's 5.
+# prove the checker on the 3.2 that macOS ships, while `env bash` finds whichever bash is
+# first on PATH — Homebrew's 5 on a Mac that has one.
 checker() { "$BASH" "$HERE/check-sh.sh" "$@"; }
 # The same copy under the same bash and tools proves itself once per run — the self-test is
 # 98% of a call, 3.8 s of 3.9 — so every call after the first that is not about the

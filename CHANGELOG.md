@@ -17,6 +17,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Fixed
 
 - `check-sh.sh` reads `$'...'` as the text it is, where `\'` does not close it. It was read as a plain single-quoted text that closed at `\'`, so everything after it in the script was read with its quotes the other way round, and a bash 4 construct or a heredoc inside `$( )` further down went unreported under a 3.2 claim
+- `references/portability.md` no longer says `env bash` on a macOS runner is Homebrew's bash 5. The GitHub `macos` images carry only 3.2 — their software list runs `bash` from the image's own `PATH` and reads `3.2.57` — and `env bash` is whichever bash is first on `PATH`, which is 5 on a Mac where Homebrew or nix put one there. Invoking the gate as `/bin/bash` and nested scripts under `"$BASH"` stays the rule, because it holds on any such machine
 
 ## 2026-09-16
 
