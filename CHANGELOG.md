@@ -4,6 +4,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-17
 
+### Added
+
+- `check-sh.sh` reports a heredoc opened inside `$( )`, `<( )` or `>( )` in a script claiming a bash below 4.0. bash 3.2 reads the heredoc's body as code while it looks for the end of the substitution, so an unpaired `)` there quietly changes the value and an unpaired `'` stops the script parsing, and `bash -n` under 3.2 passes the first. The usual spelling opens the substitution on the line before, so the checker follows open substitutions across lines rather than matching one; `references/portability.md` carries the reproduction and the row
+
 ### Changed
 
 - `check-sh.sh --help` says the first call of every run keeps the self-test, since it is what notices a copy that stopped catching defects and the bash and tools under a copy change without the copy changing; `SKILL.md` points a gate calling the checker more than once at that paragraph

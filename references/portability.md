@@ -54,6 +54,21 @@ a&lt;b
 
 Escaping `&` as `\&` fixes the 5.2 interpretation and breaks 3.2 — `docker run --rm bash:3.2 bash -c 's="a<b"; echo "${s//</\&lt;}"'` prints `a\&lt;b` — so `\&` is not a portable fix, it is a declaration of a 5.2 floor. **The portable edit cuts around the occurrence instead**, which has neither problem and is identical on both: `bash -c 'c="a b c"; f="b"; rep="X&Y"; printf "%s\n" "${c%%"$f"*}$rep${c#*"$f"}"'` prints `a X&Y c` under 5.3 and under 3.2 alike
 
+**A heredoc inside `$( )` or `<( )` is read as code by 3.2, and `bash -n` passes it.** Before 4.0 the parser finds the end of the substitution by scanning the heredoc's body, so an unpaired `)` there ends the substitution early and the value quietly takes in the rest, while an unpaired `'` is a syntax error. With `p.sh` holding `x="$(`, `cat <<'EOF'`, `a ) b`, `EOF`, `)"` and `printf "[%s]\n" "$x"` on six lines:
+
+```console
+$ docker run --rm -v "$PWD/p.sh:/p.sh:ro" bash:3.2 bash -n /p.sh; echo $?
+0
+$ docker run --rm -v "$PWD/p.sh:/p.sh:ro" bash:3.2 bash /p.sh
+[a  b
+EOF
+)]
+$ docker run --rm -v "$PWD/p.sh:/p.sh:ro" bash:4.0 bash /p.sh
+[a ) b]
+```
+
+The idiom opens the substitution on the line before the heredoc, so no one-line pattern sees it: `check-sh.sh` tracks the open substitutions across lines instead. A heredoc in backticks, or one outside the substitution, reads correctly under 3.2, and a text of several lines needs neither: single quotes carry the newlines, with each `'` inside written `'"'"'`
+
 ## Construct → floor → what to write instead
 
 | Construct | Needs | Write instead |
@@ -65,6 +80,7 @@ Escaping `&` as `\&` fixes the 5.2 interpretation and breaks 3.2 — `docker run
 | `cmd \|& cmd` | bash 4.0 | `cmd 2>&1 \| cmd` |
 | `shopt -s globstar` | bash 4.0 | `find` with `-name`, results filtered rather than excluded |
 | `read -t 0.5` (fractional) | bash 4.0 | whole seconds, or a deadline loop |
+| a heredoc inside `$( )`, `<( )` or `>( )` | bash 4.0 | a single-quoted text, or the heredoc outside the substitution |
 | `exec {fd}<file` | bash 4.1 | a fixed descriptor number |
 | `[[ -v x ]]` | bash 4.2 | `[[ -n "${x-}" ]]` or `[[ -z "${x-}" ]]` — the same test |
 | `${s:0:-1}` | bash 4.2 | `${s%?}` |
