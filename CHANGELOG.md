@@ -4,6 +4,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-18
 
+### Changed
+
+- the rule for a dropped `-e` names two shapes instead of one, because the single one it named — findings are counted — fitted only two of the five scripts in the family that drop it. The second is a script whose verdict is another command's status: a harness passing `CMD`'s through, a checker asserting on the status of what it runs, a stub whose exit code is the scenario. Each would be killed by `-e` before it could report, and none counts anything. The comment above the line now says which of the two the file is, in its own words, since the boilerplate for the wrong one sends the next reader looking for a counter that is not there
+
 ### Fixed
 
 - `references/help.md`'s canonical help block ended its `Exit` line with a full stop, in the fenced example and again as inline code, while `references/shape.md` and `templates/script.sh` show the same line bare. The page that owns what a help must list was teaching the opposite of the rule on the facing page, and it is the block every reader copies
