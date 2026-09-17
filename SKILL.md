@@ -15,7 +15,7 @@ The core below is what every script of the family shares. [`check-sh.sh`](check-
 ## Doing the work
 
 - **Start a new script from `./check-sh.sh --template > NAME.sh`**, which is the shape below already assembled; `--template bash` and `--template zsh` print its two completions
-- **End every change with `./check-sh.sh NAME.sh`**, plus `-d DOC` for each document that lists its subcommands, `-m DOC` for each that only mentions some, and `-c BASH ZSH` where completions exist; a repository's gate runs the same line
+- **End every change with `./check-sh.sh NAME.sh`**, plus `-d DOC` for each document that lists its subcommands, `-m DOC` for each that only mentions some, and `-c BASH ZSH` where completions exist; a repository's gate runs the same line, and `./check-sh.sh --help` says which of a gate's calls skip the self-test
 - **Start a review with that same run**, and read for what the checker cannot see: the why in the comments, the reason beside a bash floor, which stream each line goes to
 - **Read an unfamiliar script through `NAME.sh help [SUB]` before calling it**, because a command guessed from documentation is a command nobody checked
 

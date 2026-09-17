@@ -43,7 +43,9 @@ under the bash the claim names
 
 CHECK_SH_NESTED=1 runs the checks and skips the self-test. The self-test runs itself that
 way, and so should a gate that calls this script more than once in one run: the copy and
-its tools are the same for every call, so proving it again proves nothing new
+its tools are the same for every call, so proving it again proves nothing new. The first
+call of every run keeps it: it is what notices a copy that stopped catching defects, and
+the bash and tools under a copy change without the copy changing
 
 Nothing here reaches the network
 Exit 0 when everything agrees, 1 with one `check-sh: <what>` line per finding, 2 on a
