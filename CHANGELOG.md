@@ -12,6 +12,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 - `check-sh.sh --help` says the first call of every run keeps the self-test, since it is what notices a copy that stopped catching defects and the bash and tools under a copy change without the copy changing; `SKILL.md` points a gate calling the checker more than once at that paragraph
 
+### Fixed
+
+- `check-sh.sh` reads `$'...'` as the text it is, where `\'` does not close it. It was read as a plain single-quoted text that closed at `\'`, so everything after it in the script was read with its quotes the other way round, and a bash 4 construct or a heredoc inside `$( )` further down went unreported under a 3.2 claim
+
 ## 2026-09-16
 
 ### Added

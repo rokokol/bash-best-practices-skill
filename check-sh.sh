@@ -330,6 +330,12 @@ mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1,
           if (c == "\047") { q = ""; out = out c } else out = out (sq >= 1 ? " " : c)
           continue
         }
+        # $'"'"'...'"'"', where a backslash escapes the quote rather than standing for itself
+        if (q == "$") {
+          if (c == "\\") { out = out (sq >= 1 ? "  " : substr($0, i, 2)); i++; continue }
+          if (c == "\047") { q = ""; out = out c } else out = out (sq >= 1 ? " " : c)
+          continue
+        }
         if (q == "\"") {
           if (c == "\\") { out = out (sq >= 2 ? "  " : substr($0, i, 2)); i++; continue }
           if (c == "\"") { q = ""; out = out c; continue }
@@ -338,6 +344,7 @@ mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1,
         }
         if (c == "\\") { out = out substr($0, i, 2); i++; continue }
         if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) { out = out substr($0, i); break }
+        if (substr($0, i, 2) == "$\047") { q = "$"; out = out substr($0, i, 2); i++; continue }
         if (c == "\047" || c == "\"") { q = c; out = out c; continue }
         if (opener == "" && substr($0, i, 2) == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
           match(substr($0, i), /^<<-?[\047"]?[A-Za-z_][A-Za-z0-9_]*/))
@@ -611,7 +618,8 @@ proxy_hits() { # proxy_hits REGEX CORPUS -> `LINE has: text` for each match outs
 # substitution by scanning the heredoc's body as code, so an unpaired ' in it is a syntax
 # error and an unpaired ) ends the substitution early, and the value is quietly wrong. No
 # single line shows it — the idiom opens the substitution on the line before — so the
-# open substitutions are tracked across lines, with quotes, comments, $(( )) and (( )),
+# open substitutions are tracked across lines, with quotes — $'...', where \' does not
+# close the text, among them — comments, $(( )) and (( )),
 # whose << is a shift. Read in the copy with heredoc bodies blanked, where the opener
 # line stays. Backticks are left alone: 3.2 reads a heredoc inside them correctly
 heredoc_in_subst() { # heredoc_in_subst -> `LINE has: text` for each such opener
@@ -621,6 +629,7 @@ heredoc_in_subst() { # heredoc_in_subst -> `LINE has: text` for each such opener
       for (i = 1; i <= n; i++) {
         c = substr($0, i, 1)
         if (q == "\047") { if (c == "\047") q = ""; continue }
+        if (q == "$") { if (c == "\\") i++; else if (c == "\047") q = ""; continue }
         if (c == "\\") { i++; continue }
         if (q == "\"") {
           if (c == "\"") q = ""
@@ -629,6 +638,7 @@ heredoc_in_subst() { # heredoc_in_subst -> `LINE has: text` for each such opener
           continue
         }
         if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) break
+        if (substr($0, i, 2) == "$\047") { q = "$"; i++; continue }
         if (c == "\047" || c == "\"") { q = c; continue }
         if (substr($0, i, 3) == "$((" ) { st[++d] = "a"; st[++d] = "a"; i += 2; continue }
         if (substr($0, i, 2) == "((") { st[++d] = "a"; st[++d] = "a"; i++; continue }
@@ -1204,6 +1214,23 @@ a ) b
 X
 )\""
 expect_red "$c" "claims bash 3.2 but $c/script.sh:$(($(grep -n '^HERE=' "$c/script.sh" | cut -d: -f1) + 2)) has: cat <<'X'" "a heredoc inside \$( ) under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy heredoc-after-ansi-c)
+# In $'...' a backslash escapes the quote, so \' leaves the text open: read as a plain
+# single-quoted text it closes there, and every quote after it is read the other way round
+plant "$c" 'HERE=' "s=\$'it\\'s'
+x=\$(cat <<X
+a
+X
+)"
+expect_red "$c" "has: x=\$(cat <<X" "a heredoc inside \$( ) after a \$'...' holding \\' under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy bash4-after-ansi-c)
+# The masked copies the proxy reads track quotes the same way, and the construct after
+# such a text was blanked as if it were quoted
+plant "$c" 'HERE=' "s=\$'it\\'s'
+false && declar"'e -A m'
+expect_red "$c" "has: false && declar"'e -A m' "a bash 4 construct after a \$'...' holding \\' under a 3.2 claim" -n script.sh "$c/script.sh"
 
 c=$(copy heredoc-in-procsubst)
 plant "$c" 'HERE=' 'while read -r l; do :; done < <(cat <<X
