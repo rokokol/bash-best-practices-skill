@@ -43,13 +43,13 @@ Environment:
 
   C_LOGDIR            default for --logdir
 
-Exit: 0 clean, 1 findings printed, 2 a usage error.
+Exit: 0 clean, 1 findings printed, 2 a usage error
 ```
 
 - **Every subcommand, written at least once as `NAME sub`** — the tool's own name, a space, the subcommand — anywhere in the text. Missing one gives `dispatches 'SUB' but its help never mentions 'NAME SUB'`; the reverse gives `help lists 'NAME SUB', which the dispatcher does not have`
 - **Every flag, as a row indented two spaces**: `  -x, --long VALUE  text`, short first, long second, the value name in capitals where the flag takes one, then two spaces and the prose. Only lines matching `^  -` are read as flag rows, so a flag mentioned only in a sentence is undocumented as far as the checker is concerned — `NAME SUB accepts FLAG but its help never mentions it`, or `help has a row for FLAG, which no parser accepts`
 - **Every environment variable the script reads, under a heading of its own** — `Environment:`, or `Runtime environment` for an installer listing what the *installed* tool reads. They are found in the source by prefix — `grep -oE "(^|[^A-Za-z0-9_])${PREFIX}[A-Z0-9_]+"` — so a script with variables takes `-e PREFIX`, and a prefix that matches nothing is itself a finding rather than a silent pass
-- **Every exit code the script can produce, in a sentence beginning `Exit` or as rows `  N  text`.** `Exit: 0 clean, 1 findings printed, 2 a usage error.` is the compact form; a harness with a whole band lists them as rows under `help codes`. The checker reads the numbers on the line carrying `Exit` and on the line after it, since a long sentence wraps, and every `  N  ` row. The source side is a bash-shaped `exit N` with N greater than zero, outside comments and ending its statement — an awk program's `{ exit 1 }` inside a quoted string is not one, and a heredoc body is blanked first — and the finding is `exits N but its help never lists N`
+- **Every exit code the script can produce, in a sentence beginning `Exit` or as rows `  N  text`.** `Exit: 0 clean, 1 findings printed, 2 a usage error` is the compact form; a harness with a whole band lists them as rows under `help codes`. The checker reads the numbers on the line carrying `Exit` and on the line after it, since a long sentence wraps, and every `  N  ` row. The source side is a bash-shaped `exit N` with N greater than zero, outside comments and ending its statement — an awk program's `{ exit 1 }` inside a quoted string is not one, and a heredoc body is blanked first — and the finding is `exits N but its help never lists N`
 
 ## Flag grammar
 
