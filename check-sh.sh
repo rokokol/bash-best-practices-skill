@@ -461,9 +461,22 @@ def emit($fn; $subst):
       (if ((.N.Value // "") | startswith("{"))
        then [.Pos.Line, "fdvar", $fn, $subst, "-", .N.Value, (.Op // "-")]
        else empty end),
+      # A is the delimiter as written, quotes kept: `<<'EOF'` and `<<EOF` are the same
+      # word to a reader of text and two different things to bash, since the second
+      # expands the body. help.md asks for the first, and this is what lets it be checked
       (if (.Hdoc // null) != null
        then [.Pos.Line, "heredoc", $fn, $subst, "-",
-             (.Word | word_text), (.Hdoc.End.Line | tostring)]
+             (if (((.Word.Parts // [])[0] // {}).Type == "SglQuoted")
+              then "'" + (.Word | word_text) + "'" else (.Word | word_text) end),
+             (.Hdoc.End.Line | tostring)],
+            # And whether the body actually substitutes anything. The body is not walked —
+            # a variable named in a help text is not one the script reads, which is the
+            # whole reason the env check moved off a grep over the file — so the question
+            # is answered here, from the parts, and nothing from inside becomes a row
+            (if [(.Hdoc.Parts // [])[] | .Type] | any(. != "Lit")
+             then [.Pos.Line, "heredocexp", $fn, $subst, "-",
+                   (.Word | word_text), (.Hdoc.End.Line | tostring)]
+             else empty end)
        else empty end),
       (.Word | emit($fn; $subst))
 
@@ -535,7 +548,7 @@ tree_golden() {
 6	call	f	0	-	echo	x
 8	call	f	0	-	cat	-
 8	redir	f	0	-	<<	HD
-8	heredoc	f	0	-	HD	10
+8	heredoc	f	0	-	'HD'	10
 11	call	f	0	-	-	-
 11	assign	f	0	-	g	$
 11	param	f	0	-	2	:?
@@ -929,6 +942,87 @@ done < <(awk -F'\t' '
       ($6 == "sed" && $7 ~ /(^| )-n/ && $7 ~ /[0-9]q/) ||
       ($6 == "awk" && $7 ~ /exit/)) { print $1 }' "$tree" |
   sort -un | while IFS= read -r n; do printf '%s has: %s\n' "$n" "$(sed -n "${n}s/^[[:space:]]*//p" "$script")"; done)
+
+# ---- the dispatcher and the cmd_ functions answer to each other ---------------------
+# A subcommand whose function was renamed still dispatches, to nothing: bash reports
+# `cmd_foo: command not found` at run time and the help agrees with the arm, so every
+# check above passes. And a cmd_ function no arm calls is either a subcommand nobody can
+# reach or a leftover. Both are a question about which functions the file defines and
+# which names its arms call, and the table answers both
+#
+# It asks about calls and not about a naming convention: a dispatcher may validate the
+# word and do the work further down, which is a shape of its own and not a defect
+if [[ -n "$disp_line" ]] && ((! proxy_only)); then
+  awk -F'\t' '$2 == "func" { print $6 }' "$tree" | sort -u >"$work/defined.fn"
+  awk -F'\t' '
+    NR == FNR { if ($2 == "case" && $3 == "-" && $6 == "$cmd") d[$1] = 1; next }
+    $2 == "arm" && ($5 in d) { from = $1; to = $7 + 0; for (l = from; l <= to; l++) in_arm[l] = 1; next }
+    $2 == "call" && $6 ~ /^cmd_/ && ($1 in in_arm) { print $6 }
+  ' "$tree" "$tree" | sort -u >"$work/called.fn"
+  while IFS= read -r fn; do
+    [[ -n "$fn" ]] || continue
+    grep -qx -- "$fn" "$work/defined.fn" ||
+      finding "$name's dispatcher calls $fn(), which it does not define — bash says so only when that arm is reached"
+  done <"$work/called.fn"
+  while IFS= read -r fn; do
+    [[ -n "$fn" ]] || continue
+    grep -qx -- "$fn" "$work/called.fn" ||
+      finding "$name defines $fn() and no dispatcher arm calls it"
+  done < <(grep '^cmd_' "$work/defined.fn" || :)
+fi
+
+# ---- set -euo pipefail is the first thing the script does ---------------------------
+# Anything above it runs without them, and what runs there is usually the part that reads
+# the environment and decides where the script is — exactly where an unset variable or a
+# failing command matters most. The tree says which statement is first; a grep for the
+# line says only that it is somewhere. A script whose first statement is `set` with some
+# other flags is a different claim and is left alone, since shape.md rules on the spelling
+if ((! proxy_only)); then
+  first=$(awk -F'\t' '$2 == "call" && $3 == "-" { print $1 "\t" $6 "\t" $7; exit }' "$tree")
+  if [[ -n "$first" ]]; then
+    first_name=$(printf '%s' "$first" | cut -f2)
+    first_args=$(printf '%s' "$first" | cut -f3)
+    first_line=$(printf '%s' "$first" | cut -f1)
+    if [[ "$first_name" == set ]]; then
+      case "$first_args" in
+        *euo*pipefail*) ;;
+        *u*pipefail*)
+          # -e dropped: shape.md allows it where a non-zero status is the answer, and asks
+          # for a comment above the line saying which of the two shapes this file is. The
+          # comment is what makes the reason visible, since the line differs from the
+          # ordinary one by a letter, so its absence is the finding rather than the flags
+          # The whole comment block above, not the one line: a reason worth giving usually
+          # takes two lines, and then the line directly above carries the second half
+          awk -F'\t' -v l="$first_line" '
+            $2 == "comment" { c[$1] = $6 }
+            END {
+              for (n = l - 1; n in c; n--) if (c[n] ~ /-e/) { found = 1; break }
+              exit !found
+            }' "$tree" ||
+            finding "$name opens with \`set $first_args\` and the line above says nothing about the missing -e — shape.md asks for a comment naming which answer a non-zero status is"
+          ;;
+        *) finding "$name opens with \`set $first_args\` rather than \`set -euo pipefail\` — see references/shape.md" ;;
+      esac
+    else
+      finding "$name runs \`$first_name\` before \`set -euo pipefail\`, on line $(printf '%s' "$first" | cut -f1) — what happens above that line happens without -e, -u or pipefail"
+    fi
+  fi
+fi
+
+# ---- the help's heredoc keeps its delimiter quoted ---------------------------------
+# `<<EOF` expands the body, so a `$1` or a backtick in the help text is substituted on the
+# way out and the help says something the script does not. That is the price of the one
+# thing it buys, a value the script holds printed into the text — every installer in this
+# family prints `$VERSION` that way — so the finding is an unquoted delimiter whose body
+# substitutes nothing at all, which is the price paid for no purchase (help.md)
+while IFS= read -r hit; do
+  [[ -n "$hit" ]] || continue
+  finding "$name prints its help from a heredoc whose delimiter is unquoted and whose text substitutes nothing — $script:$hit; write <<'EOF' and every \$ in it stays literal"
+done < <(awk -F'\t' '
+  $2 == "func" && $6 == "usage" { from = $1; to = $7 + 0; next }
+  from && $2 == "heredoc" && $1 >= from && $1 <= to && $6 !~ /^'"'"'/ { hd[$1] = 1 }
+  from && $2 == "heredocexp" && $1 >= from && $1 <= to { subst_in[$1] = 1 }
+  END { for (l in hd) if (!(l in subst_in)) print l }' "$tree")
 
 # ---- the header comment lists nothing ---------------------------------------------
 # It says why the script exists and makes the claims; what the script accepts is the
@@ -1606,14 +1700,54 @@ printf 'if then\n' >>"$c/script.sh"
 expect_red "$c" "does not parse under the bash running this checker" "a script with a syntax error" -n script.sh "$c/script.sh"
 
 c=$(copy early-reader)
-# A text piped into a reader that stops early: the spelling is split so this file's own
-# check does not match the line that plants it
 plant "$c" 'HERE=' 'printf "%s\n" here | grep -q x || :'
 expect_red "$c" "a reader that stops early kills its producer" "a text piped into grep -q" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-gnu-mktemp)
 # shellcheck disable=SC2016 # the substitution belongs to the script being written out
-plant "$c" 'HERE=' 'x=$(mktem'"p -d -p /tmp)"
+plant "$c" 'HERE=' 'x=$(mktemp -d -p /tmp)'
 expect_red "$c" "has: x=\$(mktemp -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy code-before-set)
+# A line above `set -euo pipefail` runs without any of the three, and this is where a
+# script reads its environment
+plant "$c" '#!/usr/bin/env bash' 'umask 022'
+expect_red "$c" "before \`set -euo pipefail\`" "a command run before the shell options are set" -n script.sh "$c/script.sh"
+
+c=$(copy dropped-e-unexplained)
+# -e dropped with nothing above saying why: the line differs from the ordinary one by a
+# letter, so the comment is the only thing that makes the reason visible
+swap "$c" 'set -euo pipefail' 'set -uo pipefail'
+expect_red "$c" "says nothing about the missing -e" "a dropped -e with no comment" -n script.sh "$c/script.sh"
+
+c=$(copy dispatch-renamed-fn)
+# The function is renamed and the arm is not: the help still agrees with the dispatcher,
+# and bash says `cmd_run: command not found` only when someone runs that subcommand
+swap "$c" 'cmd_run() {' 'cmd_execute() {'
+expect_red "$c" "calls cmd_run(), which it does not define" "an arm calling a function that was renamed" -n script.sh "$c/script.sh"
+
+c=$(copy orphan-cmd-fn)
+# And the other direction: a cmd_ function nothing dispatches to
+plant "$c" 'cmd_run() {' '  :'
+plant "$c" 'HERE=' 'cmd_orphan() { :; }'
+expect_red "$c" "defines cmd_orphan() and no dispatcher arm calls it" "a cmd_ function with no arm" -n script.sh "$c/script.sh"
+
+c=$(copy help-heredoc-unquoted)
+# A help with nothing to substitute, printed from a heredoc that would substitute: the
+# price of auditing every $ in the text, paid for no purchase. The canonical help names
+# $SCRIPT_LOGDIR, which is the deliberate form and not a finding, so the text goes too
+replace_usage "$c" 'usage() { cat <<EOF
+script.sh — one sentence
+
+  script.sh [-n] run
+  script.sh stop
+
+  -n, --dry-run   say what would be done
+  -l DIR          the log directory
+
+Exit 0 done, 2 on a usage error
+EOF
+}'
+expect_red "$c" "delimiter is unquoted" "a help printed from a heredoc that expands it" -n script.sh "$c/script.sh"
 
 printf 'check-sh: %s; %d planted defects caught\n' "$summary" "$planted"
