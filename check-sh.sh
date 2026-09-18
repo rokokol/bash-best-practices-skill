@@ -433,10 +433,14 @@ def emit($fn; $subst):
        | [.Pos.Line, "case", $fn, $subst, "-", (.Word | case_word), (.End.Line | tostring)],
          (.Items[]?
           # B is the arm's last line, which is what scopes a row to an arm: a redirection
-          # or a comment belongs to the arm whose range holds its line. The terminator is
-          # not carried, since nothing in this standard's shape turns on `;&`
+          # or a comment belongs to the arm whose range holds its line
           | [.Pos.Line, "arm", $fn, $subst, ($c | tostring),
              ([.Patterns[]? | word_text] | join("|")), (.End.Line | tostring)],
+            # And a row of its own where the terminator is not the ordinary `;;`, since
+            # `;&` and `;;&` fall through and the bash floor they need is 4.0
+            (if (.Op // ";;") != ";;"
+             then [.Pos.Line, "armop", $fn, $subst, ($c | tostring), .Op, "-"]
+             else empty end),
             (.Stmts | emit($fn; $subst))))
 
     elif .Type == "CmdSubst" or .Type == "ProcSubst" then
