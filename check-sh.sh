@@ -418,6 +418,14 @@ def case_word:
       then "$" + $p.Parts[0].Param.Value
     else ($p.Value // "?") end;
 
+# What an assignment is worth as text: the word, or an array's elements joined. A list
+# wrapped onto a second line is one array either way, which a reader of the text has to
+# work out and a reader of the tree does not
+def assign_text:
+  (if .Array then ([(.Array.Elems // [])[] | (.Value | word_text)] | join(" "))
+   else ((.Value // null) | word_text) end)
+  | if . == "" then "-" else . end;
+
 def emit($fn; $subst):
   if type == "array" then (.[] | emit($fn; $subst))
   elif type != "object" then empty
@@ -472,6 +480,8 @@ def emit($fn; $subst):
        ([.Args[1:][]? | word_text] | join(" ") | if . == "" then "-" else . end)],
       # Assigns as well as Args: a bare `v=$(…)` is a CallExpr with no Args at all, so a
       # descent into Args alone loses every assignment and the substitutions inside them
+      ((.Assigns // [])[] | select(.Name != null)
+       | [.Pos.Line, "assign", $fn, $subst, "-", .Name.Value, assign_text]),
       (.Args | emit($fn; $subst)), (.Assigns | emit($fn; $subst))
 
     # A test operator inside `[[ ]]`, one row per operator: `-v` is a 4.2 construct, and a
@@ -487,6 +497,10 @@ def emit($fn; $subst):
       [.Pos.Line, "decl", $fn, $subst, "-", (.Variant.Value // "-"),
        ([(.Args // [])[] | select(.Name == null) | (.Value | word_text)]
         | join(" ") | if . == "" then "-" else . end)],
+      # A declared variable is an assignment too: `local -a w=(…)` holds a list the same
+      # way `w=(…)` does, and a rule reading assignments should not have to know which
+      ((.Args // [])[] | select(.Name != null)
+       | [.Pos.Line, "assign", $fn, $subst, "-", .Name.Value, assign_text]),
       (.Args | emit($fn; $subst))
 
     elif .Type == "ParamExp" then
@@ -585,6 +599,7 @@ tree_golden() {
 1	comment	-	0	-	!/usr/bin/env bash	-
 2	comment	-	0	-	 probe	-
 3	decl	-	0	-	declare	-A
+3	assign	-	0	-	m	-
 4	func	-	0	-	f	16
 5	case	f	0	-	$1	7
 6	arm	f	0	5	-n|--dry	6
@@ -594,14 +609,17 @@ tree_golden() {
 8	redir	f	0	-	<<	HD
 8	heredoc	f	0	-	HD	10
 11	call	f	0	-	-	-
+11	assign	f	0	-	g	$
 11	param	f	0	-	2	:?
 12	call	f	0	-	-	-
+12	assign	f	0	-	h	$
 12	call	f	1	-	printf	%s ok
 13	pipeinto	f	0	-	grep	-q b
 13	call	f	0	-	echo	a
 13	call	f	0	-	grep	-q b
 14	test	f	0	-	-v	-
 15	call	f	0	-	-	-
+15	assign	f	0	-	i	$
 15	param	f	0	-	g	slice-neg
 15	param	f	0	-	g	repl-quoted
 GOLDEN
@@ -1245,7 +1263,21 @@ if [[ -n "$comp_bash" ]]; then
   # A file that is only ever sourced has no shebang, so its first line names the dialect
   [[ "$(head -n 1 "$comp_bash")" == "# shellcheck shell=bash" ]] ||
     finding "$comp_bash does not open with \`# shellcheck shell=bash\`, the dialect line a sourced file needs"
-  offered_words "$comp_bash" 0 >"$work/offered.bash"
+  # The bash half is read as a tree: the words it offers live in assignments and in the
+  # arguments of the calls that build the reply, and a case arm's pattern — `run)`, `-l)` —
+  # is a pattern and not an offered word, which the tree says by putting it somewhere else.
+  # The awk being replaced had to strip those arms by regular expression first
+  #
+  # The zsh half keeps that awk on purpose: an `_arguments` spec is a grammar of its own
+  # living inside string literals, so a parse of the shell around it says nothing about
+  # what the spec offers, and shfmt would hand back the string whole
+  if read_tree "$comp_bash" >"$work/comp.tsv" 2>/dev/null; then
+    awk -F'\t' '$2 == "assign" || $2 == "call" { print $6; print $7 }' "$work/comp.tsv" |
+      tr ' ' '\n' | sed '/^-$/d;/^$/d' >"$work/offered.bash"
+  else
+    finding "$comp_bash cannot be read as a tree, so the words it offers cannot be checked"
+    : >"$work/offered.bash"
+  fi
   offered_words "$comp_zsh" 1 >"$work/offered.zsh"
   for f in "$comp_bash" "$comp_zsh"; do
     words="$work/offered.bash"
