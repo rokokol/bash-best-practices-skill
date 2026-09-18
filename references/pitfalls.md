@@ -140,6 +140,8 @@ How often the second write loses the race is a matter of scheduling, so a short 
 | 235 bytes | 0 of 80000 | 0 of 300 |
 | 7.9 KB | 1 of 300 | 1 of 300 |
 
+**A producer that is not the shell writes in blocks, not in lines, and that moves the threshold rather than removing it.** GNU `cat` fills a 128 KiB buffer per `write()`, so it usually finishes before the reader can exit: `cat FILE | head -n1` under `pipefail` survived 200 of 200 runs at every size up to 384 KB, went to 33 of 200 at 512 KB, and failed 200 of 200 from 1 MB up, on glibc with a 64 KiB pipe. The pipe buffer is not the boundary — what decides is how many `write()` calls the producer still owes when the reader goes. So neither a small text nor a fast tool is a defence, and "this one is not a shell builtin" is not a reason to leave the pipeline standing
+
 A 50 ms delay in the place the scheduler occupies makes it certain, and shows the two directions the mistake takes: `! … | grep -q` reports a finding that is not there, and `… | grep -q || flag=1` silently switches a check off:
 
 ```console
