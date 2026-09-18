@@ -251,60 +251,67 @@ check_behaviour() {
   # proxy alone — which is the parse, and the bash 3.2 claim its header now makes
   checks check.sh
 
-  echo "== every construct fires under a claim below its floor, is silent at it, and silent with no claim"
-  # The constructs live in a fixture rather than inline here, because spelling them in
-  # this file would make the proxy match its own proof, and check.sh is itself a script
-  # this gate would then have to excuse
-  # Each construct is planted inside a function nothing calls, so the copy's --help still
-  # runs under a bash that parses it; under a real 3.2 some of them do not parse at all,
-  # which is why the checker greps before it asks for the help
-  planted_count=0
-  while IFS=$'\t' read -r need planted; do
-    [[ -z "$planted" || "$need" == \#* ]] && continue
-    planted_count=$((planted_count + 1))
-    checker --template >"$work/claimed.sh"
-    printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/claimed.sh"
-    out=$(checks -n script.sh "$work/claimed.sh" 2>&1) &&
-      fail "the proxy does not catch, under a 3.2 claim: $planted"
-    [[ "$out" == *"claims bash 3.2 but"*"$planted"* ]] ||
-      fail "the proxy rejected '$planted' for the wrong reason: $out"
-    # And the other half of the same row: a script that declares the floor this construct
-    # needs — or drops the POSIX userland claim, for a row that is about the userland — is
-    # entitled to it, and the proxy must stay quiet. Without this the checker could be one
-    # that fires on everything, which the half above alone cannot tell apart
-    if [[ "$need" == bsd ]]; then
-      entitled='s/^\(# .*\)Needs bash 3\.2 and POSIX tools only/\1Needs bash 3.2/'
+  # Not under CHECK_BASH32: the proxy reads the table, every call there is --bash-only,
+  # and that mode reads no tree — so there is nothing for these constructs to fire against.
+  # Nothing is lost by skipping them here, because what they prove is about the checker's
+  # rows and not about this bash: the same loop runs on every other runner. What only this
+  # bash can prove is that check-sh.sh's own code runs under it, which is the block below
+  if [[ -z "${CHECK_BASH32:-}" ]]; then
+    echo "== every construct fires under a claim below its floor, is silent at it, and silent with no claim"
+    # The constructs live in a fixture rather than inline here, because spelling them in
+    # this file would make the proxy match its own proof, and check.sh is itself a script
+    # this gate would then have to excuse
+    # Each construct is planted inside a function nothing calls, so the copy's --help still
+    # runs under a bash that parses it; under a real 3.2 some of them do not parse at all,
+    # which is why the checker greps before it asks for the help
+    planted_count=0
+    while IFS=$'\t' read -r need planted; do
+      [[ -z "$planted" || "$need" == \#* ]] && continue
+      planted_count=$((planted_count + 1))
+      checker --template >"$work/claimed.sh"
+      printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/claimed.sh"
+      out=$(checks -n script.sh "$work/claimed.sh" 2>&1) &&
+        fail "the proxy does not catch, under a 3.2 claim: $planted"
+      [[ "$out" == *"claims bash 3.2 but"*"$planted"* ]] ||
+        fail "the proxy rejected '$planted' for the wrong reason: $out"
+      # And the other half of the same row: a script that declares the floor this construct
+      # needs — or drops the POSIX userland claim, for a row that is about the userland — is
+      # entitled to it, and the proxy must stay quiet. Without this the checker could be one
+      # that fires on everything, which the half above alone cannot tell apart
+      if [[ "$need" == bsd ]]; then
+        entitled='s/^\(# .*\)Needs bash 3\.2 and POSIX tools only/\1Needs bash 3.2/'
+      else
+        entitled=$(printf 's/^\\(# .*\\)Needs bash 3\\.2/\\1Needs bash %d.%d/' $((need / 100)) $((need % 100)))
+      fi
+      checker --template | sed "$entitled" >"$work/entitled.sh"
+      printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/entitled.sh"
+      # A copy this bash cannot parse says nothing about the proxy. The catching half above
+      # runs anywhere, because the checker greps before it asks for the help; this half needs
+      # the copy's own --help to run, and under the 3.2 macOS ships a 4.x construct is a
+      # syntax error rather than a finding — which the macOS job read as the proxy firing
+      if "$BASH" -n "$work/entitled.sh" 2>/dev/null; then
+        out=$(checks -n script.sh "$work/entitled.sh" 2>&1) ||
+          fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
+      fi
+    done <tests/fixtures/bash4-constructs.sh
+    ((planted_count >= 20)) || fail "only $planted_count constructs were read from the fixture — the extractor is broken"
+    # And the whole fixture at once in a script that declares nothing: a header that makes no
+    # claim has promised nothing about where it runs, so not one of these is a finding there.
+    # Under a real 3.2 such a script cannot even be parsed, so that control has nothing to say
+    if ((BASH_VERSINFO[0] >= 4)); then
+      {
+        # The claim line goes entirely, rather than being rewritten to another version, which
+        # would only move the floor and leave everything above it firing
+        checker --template | sed '/Needs bash 3\.2/d'
+        printf 'planted_never_called() {\n'
+        grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh | cut -f2-
+        printf '}\n'
+      } >"$work/unclaimed.sh"
+      checks -n script.sh "$work/unclaimed.sh" >/dev/null 2>&1 ||
+        fail "the proxy fired on a script that declares no floor and no userland — a claim is what turns it on"
     else
-      entitled=$(printf 's/^\\(# .*\\)Needs bash 3\\.2/\\1Needs bash %d.%d/' $((need / 100)) $((need % 100)))
+      echo "   the no-claim control skipped: this bash is $BASH_VERSION and cannot parse the fixture"
     fi
-    checker --template | sed "$entitled" >"$work/entitled.sh"
-    printf 'planted_never_called() {\n  %s\n}\n' "$planted" >>"$work/entitled.sh"
-    # A copy this bash cannot parse says nothing about the proxy. The catching half above
-    # runs anywhere, because the checker greps before it asks for the help; this half needs
-    # the copy's own --help to run, and under the 3.2 macOS ships a 4.x construct is a
-    # syntax error rather than a finding — which the macOS job read as the proxy firing
-    if "$BASH" -n "$work/entitled.sh" 2>/dev/null; then
-      out=$(checks -n script.sh "$work/entitled.sh" 2>&1) ||
-        fail "the proxy fired on '$planted' in a script entitled to it ($need): $out"
-    fi
-  done <tests/fixtures/bash4-constructs.sh
-  ((planted_count >= 20)) || fail "only $planted_count constructs were read from the fixture — the extractor is broken"
-  # And the whole fixture at once in a script that declares nothing: a header that makes no
-  # claim has promised nothing about where it runs, so not one of these is a finding there.
-  # Under a real 3.2 such a script cannot even be parsed, so that control has nothing to say
-  if ((BASH_VERSINFO[0] >= 4)); then
-    {
-      # The claim line goes entirely, rather than being rewritten to another version, which
-      # would only move the floor and leave everything above it firing
-      checker --template | sed '/Needs bash 3\.2/d'
-      printf 'planted_never_called() {\n'
-      grep -vE '^#|^$' tests/fixtures/bash4-constructs.sh | cut -f2-
-      printf '}\n'
-    } >"$work/unclaimed.sh"
-    checks -n script.sh "$work/unclaimed.sh" >/dev/null 2>&1 ||
-      fail "the proxy fired on a script that declares no floor and no userland — a claim is what turns it on"
-  else
-    echo "   the no-claim control skipped: this bash is $BASH_VERSION and cannot parse the fixture"
   fi
 
   echo "== the checker refuses rather than guessing"
