@@ -443,16 +443,25 @@ def emit($fn; $subst):
              else empty end),
             (.Stmts | emit($fn; $subst))))
 
+    # SUBST is 1 inside $( ) and < ( ) and stays 0 inside backticks, which is the bash 3.2
+    # heredoc rule exactly: 3.2 scans a heredoc's body as code while looking for the end of
+    # a $( ), and reads one inside backticks correctly. shfmt marks the second with a
+    # Backquotes key that is absent on the first
     elif .Type == "CmdSubst" or .Type == "ProcSubst" then
-      (.Stmts | emit($fn; 1))
+      # Bound before the pipe: inside .Stmts the dot is the array and the key is gone
+      ((if (.Backquotes // false) then $subst else 1 end) as $s
+       | .Stmts | emit($fn; $s))
 
     # One row per `|`, naming the reader on its right: which reader it is decides whether
     # the producer on the left can be killed by SIGPIPE part-way through
-    elif .Type == "BinaryCmd" and .Op == "|" then
+    elif .Type == "BinaryCmd" and (.Op == "|" or .Op == "|&") then
       ((.Y.Cmd // {}) as $r
        | [.OpPos.Line, "pipeinto", $fn, $subst, "-",
           ((($r.Args // [])[0] // null) | word_text),
           ([($r.Args // [])[1:][]? | word_text] | join(" ") | if . == "" then "-" else . end)]),
+      # `|&` is a 4.0 construct, so the operator gets a row of its own where it is not the
+      # plain `|`, the way an arm's terminator does
+      (if .Op != "|" then [.OpPos.Line, "pipeop", $fn, $subst, "-", .Op, "-"] else empty end),
       (to_entries[] | .value | emit($fn; $subst))
 
     elif .Type == "CallExpr" then
@@ -486,7 +495,9 @@ def emit($fn; $subst):
       # text is quoted or holds & are each a bash floor of their own, and none of the three
       # is an Exp.Op: shfmt gives a slice its own Slice and a replacement its own Repl
       ([.Pos.Line, "param", $fn, $subst, "-", (.Param.Value // "-"),
-        (if .Exp.Op then .Exp.Op
+        # `@Q` and its siblings are one operator and one letter, and only some letters are
+        # 4.4; the letter is the Exp's own word, so B carries both
+        (if .Exp.Op then (.Exp.Op + (if .Exp.Op == "@" then ((.Exp.Word.Parts // [])[0].Value // "") else "" end))
          elif .Slice then (if (.Slice.Length.Op // "") == "-" then "slice-neg" else "slice" end)
          elif .Repl then
            ([(.Repl.With.Parts // [])[]
@@ -503,6 +514,11 @@ def emit($fn; $subst):
     # only other nodes carrying OpPos — BinaryCmd, BinaryArithm, UnaryTest — all have a Type
     elif has("OpPos") and (has("Type") | not) then
       [.Pos.Line, "redir", $fn, $subst, "-", (.Op // "-"), (.Word | word_text)],
+      # A descriptor named by a variable, `exec {fd}<file`, is a 4.1 construct. shfmt puts
+      # the `{fd}` in the redirection's N, where a plain `2>` leaves it unset
+      (if ((.N.Value // "") | startswith("{"))
+       then [.Pos.Line, "fdvar", $fn, $subst, "-", .N.Value, (.Op // "-")]
+       else empty end),
       (if (.Hdoc // null) != null
        then [.Pos.Line, "heredoc", $fn, $subst, "-",
              (.Word | word_text), (.Hdoc.End.Line | tostring)]
@@ -706,14 +722,12 @@ proxy_only=0
   # BSD sed around it is an ordinary macOS machine, and its flags are the ones that differ
   posix_tools=0
   ! grep -q 'POSIX tools only' <<<"$header" || posix_tools=1
+  # One masked copy, and only for the bridge assertion's lexer side, which goes in stage 3
+  # along with this. The two further copies are gone with the proxy that needed them: the
+  # cmd and exp split existed because a pattern over text cannot tell a command from the
+  # same word inside a string, and a table of facts has no such question to answer
   code="$work/code"
   mask_code "$script" 0 >"$code"
-  code_sq="$work/code_sq"
-  mask_code "$script" 1 >"$code_sq"
-  # A third copy with double-quoted text blanked as well, for the patterns that look for a
-  # command rather than an expansion: see mask_code's comment for why the two differ
-  code_dq="$work/code_dq"
-  mask_code "$script" 2 >"$code_dq"
 
   # The table, read once and shared by every rule that has moved onto it. Under --bash-only
   # there is none, and the rules below that need one do not run; the summary says so
@@ -921,116 +935,72 @@ known_flag() { # known_flag FLAG [SUB] -> 0 when SUB (or any parser) accepts it,
 # lowercases at runtime, so those keep reading inside them
 version_rows() {
   cat <<'ROWS'
-400	cmd	(^|[^-A-Za-z0-9_])mapfil[e][[:space:]]
-400	cmd	(^|[^-A-Za-z0-9_])readarra[y][[:space:]]
-400	cmd	(^|[^-A-Za-z0-9_])declar[e] -A
-400	cmd	(^|[^-A-Za-z0-9_])loca[l] -A
-400	exp	\$\{[A-Za-z_]+,[,]\}
-400	exp	\$\{[A-Za-z_]+\^[\^]\}
-400	cmd	;;[&]
-400	cmd	[^|]\|[&][^&]
-400	cmd	(^|[^-A-Za-z0-9_])rea[d] [^;|&]*-t ?[0-9]*[.][0-9]
-400	cmd	(^|[^-A-Za-z0-9_])globsta[r]
-401	cmd	(^|[^$])[{][A-Za-z_][A-Za-z0-9_]*[}][<>]
-402	exp	\[\[[^]]*[-]v [A-Za-z_]
-402	exp	\$\{[A-Za-z_][A-Za-z0-9_]*:[^}:]*:[-][0-9]
-403	cmd	(^|[^-A-Za-z0-9_])declar[e] -n
-403	cmd	(^|[^-A-Za-z0-9_])loca[l] -n
-403	cmd	(^|[^-A-Za-z0-9_])wai[t] -n
-404	exp	\$\{[A-Za-z_]+@[QEPAaKk]\}
-502	exp	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/["]
-502	exp	\$\{[A-Za-z_][A-Za-z0-9_]*//?[^/}]*/[^}]*[&]
+400	call	mapfile	.
+400	call	readarray	.
+400	decl	declare|local|typeset	A
+400	param	.	^,,$|^\^\^$
+400	armop	;;&	.
+400	pipeop	\|&	.
+400	call	read	(^| )-t ?[0-9]*[.][0-9]
+400	call	shopt	globstar
+401	fdvar	.	.
+402	test	-v	.
+402	param	.	^slice-neg$
+403	decl	declare|local|typeset	n
+403	call	wait	(^| )-n( |$)
+404	param	.	^@[QEPAaKk]$
+502	param	.	^repl-quoted$|^repl-amp$
+bsd	call	^sort$	(^| )-[A-Za-z]*V
+bsd	call	^grep$	(^| )-[A-Za-z]*P
+bsd	call	^grep$	--exclude-dir
+bsd	call	^readlink$	(^| )-f( |$)
+bsd	call	^date$	(^| )-d( |$)
+bsd	call	^mktemp$	(^| )(-[pt]|--tmpdir|--suffix)
+bsd	call	^sed$	(^| )-[A-Za-z]*i( |$)|--in-place
+bsd	call	^timeout$	^[0-9]
+bsd	call	^tar$	--wildcards|--null
 ROWS
 }
-active_cmd=''
-active_exp=''
-# No claim, no proxy: a script that declares no floor has promised nothing about where it
-# runs, and every construct below would be a finding against a promise nobody made
-if ((floor)); then
-  while IFS="$(printf '\t')" read -r need kind pat; do
-    [[ -n "$need" ]] || continue
-    ((need > floor)) || continue
-    if [[ "$kind" == cmd ]]; then
-      active_cmd="${active_cmd:+$active_cmd|}$pat"
-    else
-      active_exp="${active_exp:+$active_exp|}$pat"
-    fi
-  done <<<"$(version_rows)"
-fi
-# The userland is the other claim, and it stands on its own: bash 5 with a BSD sed around
-# it is a macOS machine, so `POSIX tools only` turns these on whatever the floor says
-if ((posix_tools)); then
-  # A bare `mktemp -d` is fine on macOS, whose page says it "behaves as if -t tmp was
-  # supplied"; the GNU flags are not, and -t means a prefix there and a template here
-  bsd='sor[t] -[A-Za-z]*V|gre[p] -[A-Za-z]*P|readlin[k] -f|dat[e] -d|mktem[p] (-[dqu]+ )*(-[pt]|--tmpdir|--suffix)'
-  # sed -i takes a suffix on BSD and none on GNU, so neither spelling runs on both
-  bsd="$bsd"'|se[d] (-[A-Za-z]+ )*-[A-Za-z]*i|se[d] [^|;]*--in-plac[e]|gre[p] [^|;]*--exclude-di[r]'
-  bsd="$bsd"'|(^|[^-A-Za-z0-9_{$])timeou[t] [0-9]|ta[r] [^|;]*--(wildcard[s]|nul[l])'
-  active_cmd="${active_cmd:+$active_cmd|}$bsd"
-fi
-# Matched in the masked text, shown as the script has it: the line numbers are the same
+# The rows that apply to this script: a numbered one when the floor it declares is below
+# the bash the construct needs, and a `bsd` one when it claims POSIX tools. No claim, no
+# proxy — a script that declares no floor has promised nothing about where it runs, and
+# every construct below would be a finding against a promise nobody made
+version_rows >"$work/rows.tsv"
+active_rows="$work/active.tsv"
+awk -F'\t' -v floor="$floor" -v posix="$posix_tools" '
+  $1 == "bsd" { if (posix) print; next }
+  floor && $1 + 0 > floor { print }' "$work/rows.tsv" >"$active_rows"
+# Shown as the script has it, found in the table: a row carries the line, and the line is
+# read back for the message alone
 show_lines() { # show_lines < LINE NUMBERS -> `LINE has: text` from the script
-  awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$code"
+  awk 'NR == FNR { want[$1]; next } FNR in want { sub(/^[[:space:]]*/, ""); print FNR " has: " $0 }' - "$script"
 }
-proxy_hits() { # proxy_hits REGEX CORPUS -> `LINE has: text` for each match outside a comment
-  [[ -n "$1" ]] || return 0
-  grep -nE "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 | show_lines || :
+proxy_hits() { # proxy_hits -> `LINE has: text` for each active row a fact matches
+  [[ -s "$active_rows" ]] || return 0
+  # ++n and not n++: an awk variable starts as the empty string, so k[n] on the first row
+  # lands in k[""] rather than k[0], and a loop from 0 then never sees that row at all
+  awk -F'\t' '
+    NR == FNR { ++n; k[n] = $2; a[n] = $3; b[n] = $4; next }
+    { for (i = 1; i <= n; i++) if ($2 == k[i] && $6 ~ a[i] && $7 ~ b[i]) { print $1; break } }
+  ' "$active_rows" "$tree" | sort -un | show_lines || :
 }
 # A heredoc opened inside $( ), <( ) or >( ) is bash 4.0: 3.2 finds the end of the
 # substitution by scanning the heredoc's body as code, so an unpaired ' in it is a syntax
-# error and an unpaired ) ends the substitution early, and the value is quietly wrong. No
-# single line shows it — the idiom opens the substitution on the line before — so the
-# open substitutions are tracked across lines, with quotes — $'...', where \' does not
-# close the text, among them — comments, $(( )) and (( )),
-# whose << is a shift. Read in the copy with heredoc bodies blanked, where the opener
-# line stays. Backticks are left alone: 3.2 reads a heredoc inside them correctly
+# error and an unpaired ) ends the substitution early, and the value is quietly wrong.
+# One column of the table answers it: SUBST is 1 inside $( ) and <( ) and 0 inside
+# backticks and $(( )), which is exactly this rule, and the thirty-eight lines of awk that
+# tracked quotes, comments and shifts across lines to arrive at the same answer are gone
 heredoc_in_subst() { # heredoc_in_subst -> `LINE has: text` for each such opener
-  awk '
-    {
-      n = length($0)
-      for (i = 1; i <= n; i++) {
-        c = substr($0, i, 1)
-        if (q == "\047") { if (c == "\047") q = ""; continue }
-        if (q == "$") { if (c == "\\") i++; else if (c == "\047") q = ""; continue }
-        if (c == "\\") { i++; continue }
-        if (q == "\"") {
-          if (c == "\"") q = ""
-          else if (substr($0, i, 3) == "$((") { st[++d] = "a"; st[++d] = "a"; i += 2 }
-          else if (substr($0, i, 2) == "$(") { st[++d] = "sq"; q = ""; i++ }
-          continue
-        }
-        if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) break
-        if (substr($0, i, 2) == "$\047") { q = "$"; i++; continue }
-        if (c == "\047" || c == "\"") { q = c; continue }
-        if (substr($0, i, 3) == "$((" ) { st[++d] = "a"; st[++d] = "a"; i += 2; continue }
-        if (substr($0, i, 2) == "((") { st[++d] = "a"; st[++d] = "a"; i++; continue }
-        two = substr($0, i, 2)
-        if (two == "$(" || two == "<(" || two == ">(") { st[++d] = "s"; i++; continue }
-        if (c == "(") { st[++d] = "p"; continue }
-        if (c == ")") { if (d) { if (st[d] == "sq") q = "\""; d-- } continue }
-        if (two == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
-          match(substr($0, i), /^<<-?[\047"]?[A-Za-z_]/)) {
-          inside = 0
-          for (k = d; k > 0; k--) {
-            if (st[k] == "a") break
-            if (st[k] ~ /^s/) { inside = 1; break }
-          }
-          if (inside) print FNR
-          i++
-        }
-      }
-    }
-  ' "$code" | show_lines || :
+  awk -F'\t' '$2 == "heredoc" && $4 == 1 { print $1 }' "$tree" | sort -un | show_lines || :
 }
-if [[ -n "$active_cmd$active_exp" ]]; then
+if [[ -s "$active_rows" ]]; then
   claimed="bash ${claim#Needs bash }"
   [[ -n "$claim" ]] || claimed="a POSIX userland"
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
     finding "$name claims $claimed but $script:$hit — a proxy grep; the proof is a run under it"
   done < <({
-    proxy_hits "$active_cmd" "$code_dq"
-    proxy_hits "$active_exp" "$code_sq"
+    proxy_hits
     if ((floor && floor < 400)); then heredoc_in_subst; fi
   } | sort -n -u)
 fi
