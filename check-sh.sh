@@ -442,6 +442,15 @@ def emit($fn; $subst):
     elif .Type == "CmdSubst" or .Type == "ProcSubst" then
       (.Stmts | emit($fn; 1))
 
+    # One row per `|`, naming the reader on its right: which reader it is decides whether
+    # the producer on the left can be killed by SIGPIPE part-way through
+    elif .Type == "BinaryCmd" and .Op == "|" then
+      ((.Y.Cmd // {}) as $r
+       | [.OpPos.Line, "pipeinto", $fn, $subst, "-",
+          ((($r.Args // [])[0] // null) | word_text),
+          ([($r.Args // [])[1:][]? | word_text] | join(" ") | if . == "" then "-" else . end)]),
+      (to_entries[] | .value | emit($fn; $subst))
+
     elif .Type == "CallExpr" then
       [.Pos.Line, "call", $fn, $subst, "-",
        ((.Args[0] // null) | word_text),
@@ -511,6 +520,7 @@ body
 HD
   g="${2:?need}"
   h=$(printf '%s' ok)
+  echo a | grep -q b
 }
 PROBE
 }
@@ -522,7 +532,7 @@ tree_golden() {
   cat <<'GOLDEN'
 1	comment	-	0	-	!/usr/bin/env bash	-
 2	comment	-	0	-	 probe	-
-3	func	-	0	-	f	12
+3	func	-	0	-	f	13
 4	case	f	0	-	$1	6
 5	arm	f	0	4	-n|--dry	5
 5	call	f	0	-	echo	x
@@ -533,6 +543,9 @@ tree_golden() {
 10	param	f	0	-	2	:?
 11	call	f	0	-	-	-
 11	call	f	1	-	printf	%s ok
+12	pipeinto	f	0	-	grep	-q b
+12	call	f	0	-	echo	a
+12	call	f	0	-	grep	-q b
 GOLDEN
 }
 
@@ -987,7 +1000,11 @@ fi
 while IFS= read -r hit; do
   [[ -n "$hit" ]] || continue
   finding "$script:$hit — \${N:?} exits 1 with bash's message, where a missing argument is a usage error; guard it with ((\$# >= N)) || die"
-done < <(grep -nE '\$\{[0-9]+:[?]' "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed 's/^\([0-9]*\):[[:space:]]*/\1 has: /' || :)
+  # A parameter expansion whose name is a number and whose operator is :?. Being an
+  # expansion is the whole question, so the tree answers it and the comment the grep had
+  # to exclude by hand is not an expansion at all
+done < <(awk -F'\t' '$2 == "param" && $6 ~ /^[0-9]+$/ && $7 == ":?" { print $1 }' "$tree" |
+  sort -un | while IFS= read -r n; do printf '%s has: %s\n' "$n" "$(sed -n "${n}s/^[[:space:]]*//p" "$script")"; done)
 
 # ---- a producer piped into a reader that stops early ------------------------------
 # `grep -q` at its match, `head` at its line, `sed q` and `awk … exit` all close the pipe
@@ -999,8 +1016,17 @@ done < <(grep -nE '\$\{[0-9]+:[?]' "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | 
 while IFS= read -r hit; do
   [[ -n "$hit" ]] || continue
   finding "$script:$hit — a reader that stops early kills its producer with SIGPIPE, and pipefail makes that the pipeline's status; feed it with <<< instead"
-done < <(grep -nE '[^|]\|[[:space:]]*(gre[p] -[a-zA-Z]*q|hea[d]( |$)|se[d] -n [^|]*[0-9]q|aw[k] [^|]*exi[t])' "$code" |
-  grep -vE '^[0-9]+:[[:space:]]*#' | sed 's/^\([0-9]*\):[[:space:]]*/\1 has: /' || :)
+  # One row per `|`, naming the reader on its right, so the shapes below are matched
+  # against a command and its arguments rather than against whatever the line looks like.
+  # The names no longer need splitting to keep this file from finding itself, since a
+  # string is not a pipeline
+done < <(awk -F'\t' '
+  $2 == "pipeinto" &&
+    (($6 == "grep" && $7 ~ /(^| )-[a-zA-Z]*q/) ||
+      $6 == "head" ||
+      ($6 == "sed" && $7 ~ /(^| )-n/ && $7 ~ /[0-9]q/) ||
+      ($6 == "awk" && $7 ~ /exit/)) { print $1 }' "$tree" |
+  sort -un | while IFS= read -r n; do printf '%s has: %s\n' "$n" "$(sed -n "${n}s/^[[:space:]]*//p" "$script")"; done)
 
 # ---- the header comment lists nothing ---------------------------------------------
 # It says why the script exists and makes the claims; what the script accepts is the
