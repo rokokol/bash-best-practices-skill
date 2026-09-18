@@ -26,6 +26,11 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             actionlint
+            # Here ahead of its user: check-sh.sh is moving to reading the script it is
+            # given as a tree, out of `shfmt --to-json`, and jq is what will flatten that
+            # tree into the rows its rules read. It lands first, and in every consumer,
+            # so the checker finds it already present when the cascade brings it
+            jq
             shellcheck
             shfmt
             # zsh is not shellcheck's language; `zsh -n` is what can be checked on the

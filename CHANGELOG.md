@@ -4,6 +4,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ## 2026-09-18
 
+### Added
+
+- the dev shell carries `jq`. Nothing uses it yet: `check-sh.sh` is moving off its hand-written awk lexer to reading the script it is given as a tree, out of `shfmt --to-json`, and jq is what will flatten that tree into the rows its rules read. It lands first, here and in every repository that vendors the checker, so that the checker finds it already present when the cascade brings it rather than going red on arrival
+
 ### Changed
 
 - a zsh completion is now formatted as well as parsed: the gate runs `shfmt -d -ln zsh -i 2 -ci` on it beside `zsh -n`, so the zsh half of a completion pair is held to the same spelling as every other shell file the family ships. Nothing needed reformatting to satisfy it. The dialect is young, having arrived in shfmt 3.13.0, so a shfmt bump can redden a zsh file on formatting alone; `references/lint.md` says to read that diff rather than drop the check
