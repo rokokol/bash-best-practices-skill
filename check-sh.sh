@@ -432,8 +432,11 @@ def emit($fn; $subst):
       (.Pos.Line as $c
        | [.Pos.Line, "case", $fn, $subst, "-", (.Word | case_word), (.End.Line | tostring)],
          (.Items[]?
+          # B is the arm's last line, which is what scopes a row to an arm: a redirection
+          # or a comment belongs to the arm whose range holds its line. The terminator is
+          # not carried, since nothing in this standard's shape turns on `;&`
           | [.Pos.Line, "arm", $fn, $subst, ($c | tostring),
-             ([.Patterns[]? | word_text] | join("|")), (.Op // "-")],
+             ([.Patterns[]? | word_text] | join("|")), (.End.Line | tostring)],
             (.Stmts | emit($fn; $subst))))
 
     elif .Type == "CmdSubst" or .Type == "ProcSubst" then
@@ -453,11 +456,12 @@ def emit($fn; $subst):
       [.Pos.Line, "param", $fn, $subst, "-", (.Param.Value // "-"), (.Exp.Op // "-")],
       (to_entries[] | .value | emit($fn; $subst))
 
-    # A redirection carries no "Type" of its own — its keys are Pos, End, Op, OpPos, Word
-    # and Hdoc — so it is recognised by the one key nothing else has
-    elif has("Hdoc") then
+    # A redirection carries no "Type" of its own, and Hdoc is absent rather than null
+    # unless it opens a heredoc, so neither can identify one. OpPos it always has, and the
+    # only other nodes carrying OpPos — BinaryCmd, BinaryArithm, UnaryTest — all have a Type
+    elif has("OpPos") and (has("Type") | not) then
       [.Pos.Line, "redir", $fn, $subst, "-", (.Op // "-"), (.Word | word_text)],
-      (if .Hdoc != null
+      (if (.Hdoc // null) != null
        then [.Pos.Line, "heredoc", $fn, $subst, "-",
              (.Word | word_text), (.Hdoc.End.Line | tostring)]
        else empty end),
@@ -520,7 +524,7 @@ tree_golden() {
 2	comment	-	0	-	 probe	-
 3	func	-	0	-	f	12
 4	case	f	0	-	$1	6
-5	arm	f	0	4	-n|--dry	;;
+5	arm	f	0	4	-n|--dry	5
 5	call	f	0	-	echo	x
 7	call	f	0	-	cat	-
 7	redir	f	0	-	<<	HD
@@ -656,39 +660,101 @@ proxy_only=0
   code_dq="$work/code_dq"
   mask_code "$script" 2 >"$code_dq"
 
-  # The dispatcher: the top-level `case "$cmd" in` … `esac`, one arm per subcommand,
-  # `a | b)` split into two. The help arm and the refusal arms are not subcommands.
-  # shellcheck disable=SC2016 # `$cmd` is matched literally, in the script's own text
-  dispatch=$(sed -n '/^case "\$cmd" in$/,/^esac$/p' "$code")
-  if [[ -n "$dispatch" ]]; then
+  # The table, read once and shared by every rule that has moved onto it. Under --bash-only
+  # there is none, and the rules below that need one do not run; the summary says so
+  tree="$work/tree.tsv"
+  : >"$tree"
+  ((bash_only)) || if ! read_tree "$script" >"$tree" 2>"$work/tree.err"; then
+    # Whose problem it is, decided by the parser that matters: a script this bash rejects
+    # is reported below in bash's own words, which is where the message belongs and what
+    # the self-test expects. One bash parses and shfmt does not is the two disagreeing,
+    # and then there is no tree to read and nothing here can stand in for it
+    : >"$tree"
+    if "$BASH" -n "$script" 2>/dev/null; then
+      die "shfmt cannot read $name, which this bash parses: $(tr '\n' ' ' <"$work/tree.err")"
+    fi
+  fi
+
+  # The dispatcher: the top-level `case "$cmd"`, one arm per subcommand, `a | b)` split
+  # into two. The help arm and the refusal arms are not subcommands. Read from the tree,
+  # so a `case "$cmd"` written inside a string or a heredoc is text and not a dispatcher,
+  # and one indented or spelled `case $cmd` is still found
+  # Every top-level `case "$cmd"`, not the first: a script may answer -h before the tools
+  # its subcommands need are looked for, and that pre-dispatch is a `case "$cmd"` of its
+  # own. The arms of all of them together are the dispatcher
+  disp_line=$(awk -F'\t' '$2 == "case" && $3 == "-" && $6 == "$cmd" { print $1 }' "$tree")
+  if [[ -n "$disp_line" ]]; then
     while IFS= read -r arm; do
       [[ -n "$arm" && "$arm" != help ]] || continue
       subs+=("$arm")
-    done < <(printf '%s\n' "$dispatch" |
-      sed -n 's/^  \([a-z][a-z0-9-]*\( *| *[a-z][a-z0-9-]*\)*\)).*/\1/p' | tr '|' '\n' | tr -d ' ')
+    done < <(awk -F'\t' '
+      NR == FNR { if ($2 == "case" && $3 == "-" && $6 == "$cmd") d[$1] = 1; next }
+      $2 == "arm" && ($5 in d) {
+        n = split($6, p, "|")
+        for (i = 1; i <= n; i++) if (p[i] ~ /^[a-z][a-z0-9-]*$/) print p[i]
+      }' "$tree" "$tree")
     # The *) arm refuses, and a refusal is not output: a usage printed there goes to stderr.
     # A wrapper's *) arm passes the word through to another tool instead, and says so with
     # the comment `# pass-through` inside the arm; then the subcommand set is open — the
     # help and the docs may name commands the dispatcher never spells — and only the flags
     # stay closed. A declaration rather than a guess: whether an arm refuses is decided by
     # the helper it calls, which no grep can see
-    refusal=$(printf '%s\n' "$dispatch" | sed -n '/^  \([^)]* | \)\{0,1\}\*)/,/;;/p')
-    [[ -n "$refusal" ]] || finding "$name's dispatcher has no *) arm to refuse an unknown subcommand"
-    usage_rows=$(grep -E '(^|[^[:alnum:]_])usage([^[:alnum:]_]|$)' <<<"$refusal" || :)
-    # Not <<<"" on an empty list: a here-string of nothing is still one empty line, which
-    # `grep -v` matches, and the finding would fire on an arm with no usage at all
-    [[ -z "$usage_rows" ]] || ! grep -qv '>&2' <<<"$usage_rows" ||
-      finding "$name's *) arm prints its usage to stdout rather than stderr"
-    ! grep -q '# pass-through' <<<"$refusal" || open_set=1
+    # The refusal arm, as a line range: an arm row carries its own last line, so every
+    # other row is inside it or is not, and no text has to be re-read to find out
+    refusal_range=$(awk -F'\t' '
+      NR == FNR { if ($2 == "case" && $3 == "-" && $6 == "$cmd") d[$1] = 1; next }
+      $2 == "arm" && ($5 in d) {
+        n = split($6, p, "|")
+        for (i = 1; i <= n; i++) if (p[i] == "*") { print $1 "\t" $7; exit }
+      }' "$tree" "$tree")
+    [[ -n "$refusal_range" ]] || finding "$name's dispatcher has no *) arm to refuse an unknown subcommand"
+    if [[ -n "$refusal_range" ]]; then
+      refusal_from=${refusal_range%%$'\t'*}
+      refusal_to=${refusal_range##*$'\t'}
+      # A refusal is not output, so its usage goes to stderr. A call to usage inside the
+      # arm and a `>&2` on the same line are both rows, and the line joins them
+      usage_lines=$(awk -F'\t' -v a="$refusal_from" -v b="$refusal_to" '
+        $2 == "call" && $1 >= a && $1 <= b && $6 == "usage" { print $1 }' "$tree")
+      while IFS= read -r ul; do
+        [[ -n "$ul" ]] || continue
+        awk -F'\t' -v l="$ul" '$2 == "redir" && $1 == l && $6 == ">&" && $7 == "2" { found = 1 }
+          END { exit !found }' "$tree" ||
+          finding "$name's *) arm prints its usage to stdout rather than stderr"
+      done <<<"$usage_lines"
+      # A wrapper's *) arm passes the word through to another tool instead, and says so
+      # with the comment `# pass-through` inside the arm; then the subcommand set is open —
+      # the help and the docs may name commands the dispatcher never spells — and only the
+      # flags stay closed. A declaration rather than a guess: whether an arm refuses is
+      # decided by the helper it calls, which no reading of the code can see
+      ! awk -F'\t' -v a="$refusal_from" -v b="$refusal_to" '
+        $2 == "comment" && $1 >= a && $1 <= b && $6 ~ /pass-through/ { found = 1 }
+        END { exit !found }' "$tree" || open_set=1
+    fi
   fi
 
-  # The flags: every `-x | --long)` arm, attributed to the cmd_<sub>() function it sits
-  # in, or global when it sits in no function. Arms in any other function are not a
-  # parser of this script's own flags and are left alone. The function is found by its
-  # opening line at column 0, so a nested case is read as its function's.
+  # The flags: every arm pattern that is a flag, attributed to the cmd_<sub>() function it
+  # sits in, or global when it sits in none. Arms in any other function are not a parser of
+  # this script's own flags and are left alone. A pattern is read one at a time, so a flag
+  # is a flag wherever it sits — `-v | --version)` on the dispatcher is a global flag the
+  # help must list, beside `run)` which is a subcommand
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     flags+=("$line")
+  done < <(awk -F'\t' '
+    $2 == "arm" && $6 ~ /^-/ {
+      owner = "-"
+      if ($3 != "-") {
+        if (substr($3, 1, 4) != "cmd_") next
+        owner = substr($3, 5); gsub(/_/, "-", owner)
+      }
+      n = split($6, p, "|")
+      for (i = 1; i <= n; i++) if (p[i] ~ /^--?[a-zA-Z]/) print owner "\t" p[i]
+    }' "$tree")
+
+  lexer_flags=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    lexer_flags+=("$line")
   done < <(awk '
     # A one-line function, `usage() { …; }`, opens and closes on the same line
     /^[a-z_][a-z0-9_]*\(\) \{/ && !/\}[[:space:]]*$/ { fn = $0; sub(/\(\).*/, "", fn); next }
@@ -715,40 +781,22 @@ proxy_only=0
   # flag wherever it sits, so `-v | --version)` on the dispatcher is a global flag the help
   # must list, while `run)` beside it is a subcommand; -h and --help carry no help row of
   # their own and are dropped on both sides, as the help check below drops them
-  ((bash_only)) || if ! read_tree "$script" >"$work/tree.tsv" 2>"$work/tree.err"; then
-    # Whose problem it is, decided by the parser that matters: a script this bash rejects
-    # is reported below in bash's own words, which is where the message belongs and what
-    # the self-test expects. One bash parses and shfmt does not is the two disagreeing,
-    # and then there is no tree to read and nothing here can stand in for it
-    if "$BASH" -n "$script" 2>/dev/null; then
-      die "shfmt cannot read $name, which this bash parses: $(tr '\n' ' ' <"$work/tree.err")"
-    fi
-  else
-    awk -F'\t' '
-      $2 == "case" && $3 == "-" && $6 == "$cmd" { disp = $1; next }
-      $2 == "arm" && $5 == disp {
-        n = split($6, p, "|")
-        for (i = 1; i <= n; i++) if (p[i] ~ /^[a-z][a-z0-9-]*$/ && p[i] != "help") print p[i]
-      }' "$work/tree.tsv" | sort -u >"$work/tree.subs"
-    printf '%s\n' "${subs[@]+"${subs[@]}"}" | sed '/^$/d' | sort -u >"$work/lex.subs"
+  if [[ -s "$tree" ]]; then
+    # shellcheck disable=SC2016 # `$cmd` is matched literally, in the script's own text
+    sed -n '/^case "\$cmd" in$/,/^esac$/p' "$code" |
+      sed -n 's/^  \([a-z][a-z0-9-]*\( *| *[a-z][a-z0-9-]*\)*\)).*/\1/p' |
+      tr '|' '\n' | tr -d ' ' | sed '/^help$/d;/^$/d' | sort -u >"$work/lex.subs"
+    printf '%s\n' "${subs[@]+"${subs[@]}"}" | sed '/^$/d' | sort -u >"$work/tree.subs"
     cmp -s "$work/tree.subs" "$work/lex.subs" ||
       die "the tree and the lexer disagree about $name's subcommands:"$'\n'"$(diff "$work/tree.subs" "$work/lex.subs")"
 
-    awk -F'\t' '
-      $2 == "arm" && $6 ~ /^-/ {
-        owner = "-"
-        if ($3 != "-") {
-          if (substr($3, 1, 4) != "cmd_") next
-          owner = substr($3, 5); gsub(/_/, "-", owner)
-        }
-        n = split($6, p, "|")
-        for (i = 1; i <= n; i++)
-          if (p[i] ~ /^--?[a-zA-Z]/ && p[i] != "-h" && p[i] != "--help") print owner "\t" p[i]
-      }' "$work/tree.tsv" | sort -u >"$work/tree.flags"
-    # awk and not `grep -E '\t…'`: in a POSIX ERE `\t` is the letter t, so the grep spelling
-    # silently matched nothing and let both exempt flags through on this side alone
-    printf '%s\n' "${flags[@]+"${flags[@]}"}" | sed '/^$/d' |
+    # -h and --help carry no help row of their own and are dropped on both sides, as the
+    # help check below drops them. awk and not `grep -E '\t…'`: in a POSIX ERE `\t` is the
+    # letter t, so the grep spelling matches nothing and exempts neither
+    printf '%s\n' "${lexer_flags[@]+"${lexer_flags[@]}"}" | sed '/^$/d' |
       awk -F'\t' '$2 != "-h" && $2 != "--help"' | sort -u >"$work/lex.flags"
+    printf '%s\n' "${flags[@]+"${flags[@]}"}" | sed '/^$/d' |
+      awk -F'\t' '$2 != "-h" && $2 != "--help"' | sort -u >"$work/tree.flags"
     cmp -s "$work/tree.flags" "$work/lex.flags" ||
       die "the tree and the lexer disagree about $name's flags:"$'\n'"$(diff "$work/tree.flags" "$work/lex.flags")"
   fi
@@ -764,7 +812,16 @@ proxy_only=0
   # The help arm is spelled one way, so a reader and a completion can count on all three.
   # A wrapper passes `help` through to the tool behind it, whose help is the better one,
   # so it may answer -h and --help as flags before the dispatcher instead
-  if [[ -n "$dispatch" ]] && ! grep -qE '^  -h \| --help \| help\)' <<<"$dispatch"; then
+  # The patterns come out of the table already split, so the three are compared as a set
+  # and the spelling of the spaces around the bars is the formatter's business, not this
+  # check's — which is what it was reading before
+  help_arm=0
+  [[ -z "$disp_line" ]] ||
+    ! awk -F'\t' '
+      NR == FNR { if ($2 == "case" && $3 == "-" && $6 == "$cmd") d[$1] = 1; next }
+      $2 == "arm" && ($5 in d) && $6 == "-h|--help|help" { found = 1 }
+      END { exit !found }' "$tree" "$tree" || help_arm=1
+  if [[ -n "$disp_line" ]] && ((help_arm == 0)); then
     flag_rows=$(printf '%s\n' "${flags[@]+"${flags[@]}"}")
     if ! { ((open_set)) && grep -qx -- $'-\t--help' <<<"$flag_rows"; }; then
       finding "$name's dispatcher has no -h | --help | help arm"
@@ -1148,6 +1205,14 @@ summary=$(printf '%s — %d subcommands, %d flags agree with the help; %d docume
 
 if [[ -n "${CHECK_SH_NESTED:-}" ]]; then
   printf 'check-sh: %s; self-test skipped\n' "$summary"
+  exit 0
+fi
+
+# Under --bash-only the checks that read a tree did not run, so most of what the plants
+# below falsify was never asked. A falsification pass that cannot fail proves nothing and
+# would read as though it had, so it is skipped whole and said out loud
+if ((bash_only)); then
+  printf 'check-sh: %s; self-test skipped, since it falsifies checks this mode does not run\n' "$summary"
   exit 0
 fi
 
