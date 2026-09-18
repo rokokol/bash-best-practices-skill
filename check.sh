@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # A check that has never failed is a decoration, and this skill hands its checker to other
 # repositories
-# Needs bash 3.2 and POSIX tools only, so behaviour mode runs unchanged under the bash a
-# macOS runner has
+# Needs bash 3.2 and POSIX tools only for its own code, so behaviour mode runs unchanged
+# under the bash a macOS runner has; the lint half calls actionlint, shellcheck, shfmt,
+# zsh and nix, which come from the flake's dev shell and never from the runner's PATH
 set -euo pipefail
 
 usage() {

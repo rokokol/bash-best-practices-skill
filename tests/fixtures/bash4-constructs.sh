@@ -12,7 +12,7 @@
 400	echo "${name,,}"
 400	echo "${name^^}"
 400	case x in a) ;;& b) ;; esac
-400	cmd |& tee log
+400	true |& tee log
 400	read -r -t 0.5 line
 400	shopt -s globstar
 401	exec {fd}<f
@@ -35,6 +35,6 @@ bsd	mktemp --suffix=.log
 bsd	sed -i 's/a/b/' f
 bsd	sed --in-place 's/a/b/' f
 bsd	grep -r --exclude-dir=.git x .
-bsd	timeout 5 cmd
+bsd	timeout 5 true
 bsd	tar -x --wildcards -f a.tar '*.sh'
 bsd	tar -c --null -T - -f a.tar

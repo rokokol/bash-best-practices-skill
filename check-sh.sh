@@ -864,6 +864,34 @@ bsd	call	^timeout$	^[0-9]
 bsd	call	^tar$	--wildcards|--null
 ROWS
 }
+
+# What `POSIX tools only` covers, so that anything else a script calls has to be named in
+# the header beside the claim. It is what the claim promises rather than what POSIX.1
+# tabulates: a utility both a GNU and a BSD userland ship, which is the portability the
+# claim is about. `mktemp` is the case that decides between the two readings — POSIX.1
+# does not list it, every userland this family targets has it, and portability.md already
+# rules on it by ruling on which of its flags differ. A name missing here is a finding
+# asking for one word in a header, which is cheap; a name wrongly here is a claim nobody
+# checks
+posix_utilities() {
+  cat <<'UTILS'
+awk basename cat chgrp chmod chown cmp comm cp cut date diff dirname du echo env expand
+expr false file find fold grep head id install join ln logname ls mkdir mkfifo mktemp more
+mv nl od paste patch pr printf ps pwd rm rmdir sed sleep sort split stty tail tar tee test
+time touch tr true tsort tty uname unexpand uniq wc who xargs
+UTILS
+}
+
+# bash's own, which need no tool at all. `command`, `type` and `test` are here rather than
+# in the list above because a script calling them is calling the builtin
+bash_builtins() {
+  cat <<'BUILTINS'
+alias bg bind break builtin caller cd command compgen complete compopt continue declare
+dirs disown enable eval exec exit export false fc fg getopts hash help history jobs kill
+let local logout mapfile popd printf pushd pwd read readarray readonly return set shift
+shopt source suspend test times trap true type typeset ulimit umask unalias unset wait
+BUILTINS
+}
 # The rows that apply to this script: a numbered one when the floor it declares is below
 # the bash the construct needs, and a `bsd` one when it claims POSIX tools. No claim, no
 # proxy — a script that declares no floor has promised nothing about where it runs, and
@@ -969,6 +997,27 @@ if [[ -n "$disp_line" ]] && ((! proxy_only)); then
     grep -qx -- "$fn" "$work/called.fn" ||
       finding "$name defines $fn() and no dispatcher arm calls it"
   done < <(grep '^cmd_' "$work/defined.fn" || :)
+fi
+
+# ---- the tools the header claims are the tools the script calls ---------------------
+# `POSIX tools only` is a promise about what has to be installed for the script to run, and
+# it is the half of the header a macOS runner cannot prove: the bash is proven by running
+# under it, while a missing tool is only missing on the machine that lacks it. Every name
+# the script calls that is not a builtin, not one of its own functions and not a POSIX
+# utility has to appear in the header beside the claim — one word, which is what makes the
+# claim readable rather than aspirational
+if ((posix_tools && ! proxy_only)); then
+  {
+    posix_utilities
+    bash_builtins
+  } | awk '{ for (i = 1; i <= NF; i++) print $i }' | sort -u >"$work/known.tools"
+  awk -F'\t' '$2 == "func" { print $6 }' "$tree" | sort -u >>"$work/known.tools"
+  while IFS= read -r tool; do
+    [[ -n "$tool" ]] || continue
+    has_token "$tool" <<<"$header" ||
+      finding "$name calls $tool, which is neither a builtin nor a POSIX utility, and its header claims POSIX tools only without naming it"
+  done < <(awk -F'\t' '$2 == "call" && $6 ~ /^[a-z][a-z0-9_.-]*$/ { print $6 }' "$tree" |
+    sort -u | grep -vxF -f "$work/known.tools" || :)
 fi
 
 # ---- set -euo pipefail is the first thing the script does ---------------------------
@@ -1707,6 +1756,18 @@ c=$(copy claimed-gnu-mktemp)
 # shellcheck disable=SC2016 # the substitution belongs to the script being written out
 plant "$c" 'HERE=' 'x=$(mktemp -d -p /tmp)'
 expect_red "$c" "has: x=\$(mktemp -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
+
+c=$(copy unnamed-tool)
+# A tool that is neither a builtin nor a POSIX utility, called by a script whose header
+# promises POSIX tools only and does not name it
+plant "$c" 'HERE=' 'planted_never_called() { ripgrep --version; }'
+expect_red "$c" "calls ripgrep, which is neither a builtin nor a POSIX utility" "a non-POSIX tool the header does not name" -n script.sh "$c/script.sh"
+
+c=$(copy named-tool)
+# And the same call with the header naming it, which is the whole fix the finding asks for
+plant "$c" 'HERE=' 'planted_never_called() { ripgrep --version; }'
+swap "$c" '# Needs bash 3.2 and POSIX tools only' '# Needs bash 3.2, ripgrep and POSIX tools only'
+expect_green "$c" "a non-POSIX tool named in the header" -n script.sh "$c/script.sh"
 
 c=$(copy code-before-set)
 # A line above `set -euo pipefail` runs without any of the three, and this is where a
