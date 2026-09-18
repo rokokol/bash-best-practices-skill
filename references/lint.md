@@ -9,6 +9,27 @@ Two tools read every script in this family — shellcheck for what the shell wil
 - **A shebang-less file that is bash says so in its first line**: `# shellcheck shell=bash`. Bash completions are sourced, never executed, so they carry no shebang, and without the directive shellcheck either guesses `sh` and reddens every `[[` or refuses the file outright
 - **`shfmt -d -i 2 -ci`, in that spelling, plus `-ln zsh` for the zsh files.** `-d` prints a diff and exits non-zero instead of rewriting, which is what a gate wants — the rewrite is a thing a person does and reads. Two-space indent and `-ci` (case-indented arms) are what the family's scripts are already written in, and they are what makes the dispatcher and flag-parser shapes in [shape.md](shape.md) come out the way `check-sh.sh` parses them. A bash file needs no `-ln`, since `auto` reads the shebang; a `#compdef` file has none to read, so its dialect is named
 
+## Reading a script rather than scanning it
+
+A tool that decides something about shell source — a checker, a generator, a migration — reads the text or it reads the grammar, and the two are not the same tool with a different spelling. `<<` opens a heredoc everywhere except inside `$(( ))`, where it shifts ([pitfalls.md](pitfalls.md#the-interpreter)); a `case "$cmd" in` inside a heredoc is a string; `declare -A` in a message is prose. Each of those needs a scanner to track quotes, comments and arithmetic across lines, and what it costs is not the code — it is that the failure is silent, because a scan that has swallowed the rest of a file reports nothing wrong about it
+
+`shfmt --to-json` prints mvdan.cc/sh's whole syntax tree with a line number on every node, which answers all of it by construction. Flatten it once into rows a rule can read with awk and the non-POSIX dependency lives in that one stage; `check-sh.sh` beside this file is that shape, and its `read_tree` is fifteen lines
+
+What is not obvious from the outside, and costs a measurement each to find out:
+
+- **`--to-json` reads stdin only**, and `--filename NAME` is what lets `-ln auto` guess the dialect from a name it never opens
+- **A redirection carries no `Type`**, so it cannot be found by one; `OpPos` marks it, and every other node carrying `OpPos` — `BinaryCmd`, `BinaryArithm`, `UnaryTest` — does have a `Type`. Its `Hdoc` key is **absent** rather than null unless it opens a heredoc, so testing for the key finds only heredocs
+- **`declare`, `local`, `typeset`, `export` and `readonly` are a `DeclClause`**, not a call, and a flag there is an `Assign` with no `Name`. That is what makes `declare -rA` and `local -Ar` answerable at all
+- **Comments hang off the statement they precede**, not off the file, and are marked by `Hash`, the position of the `#`
+- **A `ParamExp` keeps its operator in `Exp.Op`**, but a slice and a replacement have none: they carry `Slice` and `Repl` instead, and `${x@Q}`'s letter is the `Exp`'s own word
+- **A `CallExpr` keeps `Assigns` beside `Args`**, so `v=$(…)` is a call with no arguments at all and a descent into `Args` alone loses every assignment and the substitutions inside it
+- **Backticks are a `CmdSubst` too**, told apart by a `Backquotes` key that is absent on `$( )` — which matters because bash 3.2 mishandles a heredoc in the second and not in the first
+- **jq binds before it pipes**: `.Name.Value` and `.Backquotes` are gone inside `.Body` or `.Stmts`, so they are bound to a variable first
+
+**The JSON has moved once, so check the shape rather than the version.** 3.13.1 wrote `"Op": 71` where 3.14.1 writes `"Op": "<<"`. A version number is a proxy for what a rule downstream depends on; a small probe exercising every kind of row, flattened and compared to the table it must produce, is the thing itself, and it says which way the shape moved rather than scattering findings
+
+**The alternative, where a new tool is not wanted, is `bash --pretty-print`**, which parses without executing and normalises quoting. It costs the line numbers, the comments, and any documentation: it is absent from the 5.0 and 5.1 man pages and the GNU manual, and appears only in `bash --help`
+
 ## Never silence a linter where a rewrite satisfies it
 
 A `# shellcheck disable=` comment is a last resort for a rule that is wrong about this code, never a way past a rule that is right. The four that come up, each with its rewrite:
