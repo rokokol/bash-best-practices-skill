@@ -465,8 +465,37 @@ def emit($fn; $subst):
       # descent into Args alone loses every assignment and the substitutions inside them
       (.Args | emit($fn; $subst)), (.Assigns | emit($fn; $subst))
 
+    # A test operator inside `[[ ]]`, one row per operator: `-v` is a 4.2 construct, and a
+    # pattern over text has to tell it from the same two characters inside a string
+    elif .Type == "UnaryTest" or .Type == "BinaryTest" then
+      [.OpPos.Line, "test", $fn, $subst, "-", (.Op // "-"), "-"],
+      (to_entries[] | .value | emit($fn; $subst))
+
+    # declare, local, typeset, export and readonly are a clause of their own and not a
+    # call. A is the word written, B its flags joined, so `declare -rA` and `local -Ar`
+    # answer the same question as `declare -A` — which a pattern over text does not
+    elif .Type == "DeclClause" then
+      [.Pos.Line, "decl", $fn, $subst, "-", (.Variant.Value // "-"),
+       ([(.Args // [])[] | select(.Name == null) | (.Value | word_text)]
+        | join(" ") | if . == "" then "-" else . end)],
+      (.Args | emit($fn; $subst))
+
     elif .Type == "ParamExp" then
-      [.Pos.Line, "param", $fn, $subst, "-", (.Param.Value // "-"), (.Exp.Op // "-")],
+      # B is the operator where there is one, and otherwise says which of the two shapes
+      # that carry none this is. A slice with a negative length and a replacement whose
+      # text is quoted or holds & are each a bash floor of their own, and none of the three
+      # is an Exp.Op: shfmt gives a slice its own Slice and a replacement its own Repl
+      ([.Pos.Line, "param", $fn, $subst, "-", (.Param.Value // "-"),
+        (if .Exp.Op then .Exp.Op
+         elif .Slice then (if (.Slice.Length.Op // "") == "-" then "slice-neg" else "slice" end)
+         elif .Repl then
+           ([(.Repl.With.Parts // [])[]
+             | if (.Type == "DblQuoted" or .Type == "SglQuoted") then "q"
+               elif (.Value // "") | test("&") then "a"
+               else "" end]
+            | join("")
+            | if test("q") then "repl-quoted" elif test("a") then "repl-amp" else "repl" end)
+         else "-" end)]),
       (to_entries[] | .value | emit($fn; $subst))
 
     # A redirection carries no "Type" of its own, and Hdoc is absent rather than null
@@ -515,9 +544,10 @@ tree_probe() {
   cat <<'PROBE'
 #!/usr/bin/env bash
 # probe
+declare -A m
 f() {
   case "$1" in
-    -n | --dry) echo "x" ;;
+    -n | --dry) echo "x" ;;&
   esac
   cat <<'HD'
 body
@@ -525,6 +555,8 @@ HD
   g="${2:?need}"
   h=$(printf '%s' ok)
   echo a | grep -q b
+  [[ -v g ]]
+  i="${g:1:-2}${g//x/"y"}"
 }
 PROBE
 }
@@ -536,20 +568,26 @@ tree_golden() {
   cat <<'GOLDEN'
 1	comment	-	0	-	!/usr/bin/env bash	-
 2	comment	-	0	-	 probe	-
-3	func	-	0	-	f	13
-4	case	f	0	-	$1	6
-5	arm	f	0	4	-n|--dry	5
-5	call	f	0	-	echo	x
-7	call	f	0	-	cat	-
-7	redir	f	0	-	<<	HD
-7	heredoc	f	0	-	HD	9
-10	call	f	0	-	-	-
-10	param	f	0	-	2	:?
+3	decl	-	0	-	declare	-A
+4	func	-	0	-	f	16
+5	case	f	0	-	$1	7
+6	arm	f	0	5	-n|--dry	6
+6	armop	f	0	5	;;&	-
+6	call	f	0	-	echo	x
+8	call	f	0	-	cat	-
+8	redir	f	0	-	<<	HD
+8	heredoc	f	0	-	HD	10
 11	call	f	0	-	-	-
-11	call	f	1	-	printf	%s ok
-12	pipeinto	f	0	-	grep	-q b
-12	call	f	0	-	echo	a
-12	call	f	0	-	grep	-q b
+11	param	f	0	-	2	:?
+12	call	f	0	-	-	-
+12	call	f	1	-	printf	%s ok
+13	pipeinto	f	0	-	grep	-q b
+13	call	f	0	-	echo	a
+13	call	f	0	-	grep	-q b
+14	test	f	0	-	-v	-
+15	call	f	0	-	-	-
+15	param	f	0	-	g	slice-neg
+15	param	f	0	-	g	repl-quoted
 GOLDEN
 }
 
