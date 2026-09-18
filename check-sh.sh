@@ -804,7 +804,9 @@ proxy_only=0
   # A plain script with no dispatcher and no flag has no help for anything to agree with.
   # If its header claims bash 3.2 the proxy below is still worth running, and it is all
   # that runs; with no claim either there is nothing to check, which is a refusal
-  if ((${#subs[@]} + ${#flags[@]} == 0)); then
+  # Under --bash-only both lists are empty because no tree was read, which is a fact about
+  # the run and not about the script, so the refusal below would be a lie and is not made
+  if ((${#subs[@]} + ${#flags[@]} == 0 && bash_only == 0)); then
     ((floor || posix_tools)) ||
       die "nothing to check in $script: no case \"\$cmd\" dispatcher, no flag arms and no bash floor or POSIX userland claim — see references/shape.md"
     proxy_only=1
@@ -1022,6 +1024,19 @@ if ! parse=$("$BASH" -n "$script" 2>&1); then
   proxy_only=1
 fi
 
+# Built once and printed by whichever exit is reached: an exit code does not say what was
+# examined, and a run that examined nothing exits 0 too, so every run states its verdict
+# and names what it did not do
+summary=$(printf '%s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked' \
+  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" \
+  "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)")
+((bash_only == 0)) || summary="$summary; --bash-only, so nothing that reads the script as a tree ran"
+
+# Everything from here on holds the help, a document or a completion to the subcommands
+# and flags read out of the code. Under --bash-only those lists are empty because no tree
+# was read, not because the script has none, so every row the help carries would be read
+# as a flag no parser accepts: comparing against nothing finds everything wrong, the same
+# way it finds nothing wrong
 # ---- the help ---------------------------------------------------------------------
 if ((! proxy_only)); then
   # Run under the bash running this checker, not the one the shebang finds: on a macOS
@@ -1044,6 +1059,18 @@ if ((! proxy_only)); then
     where=$(grep -nE "$self_read" "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed -n '1s/^\([0-9]*\):[[:space:]]*/ — line \1 has: /p' || :)
     finding "$name --help prints other text through a pipe than from the file, at exit 0: under bash <(…) it reads its own source${where:-, by a path no grep here can name}; print the help from a heredoc"
   fi
+  # The two runs above are the last thing --bash-only does: they ask this bash a question
+  # and answer it. Everything past here holds the help, a document or a completion to the
+  # subcommands and flags read out of the code, and in this mode those lists are empty
+  # because no tree was read rather than because the script has none — so every row the
+  # help carries would be read as a flag no parser accepts. Comparing against nothing
+  # finds everything wrong, the same way it finds nothing wrong
+  if ((bash_only)); then
+    ((findings == 0)) || exit 1
+    printf 'check-sh: %s\n' "$summary"
+    exit 0
+  fi
+
   # Per-subcommand help, where the script has it: `help SUB` for each help_<sub>() it
   # defines. Its flags are then looked for there rather than in the general help
   corpus="$help"
@@ -1114,6 +1141,15 @@ if ((! proxy_only)); then
       finding "$name exits $n but its help never lists $n on an Exit line"
   done < <(grep -vE '^[[:space:]]*#' "$code" |
     grep -oE '(^|[;{(&|[:space:]])exit [1-9][0-9]*[[:space:]]*(;|&&|\|\||$)' | grep -oE '[0-9]+' | sort -u)
+fi
+
+# The same stop as inside the help section, for the path that skipped it: a script the
+# proxy alone is checked by never reaches the exit there, and the documents below would
+# still be held to an empty list
+if ((bash_only)); then
+  ((findings == 0)) || exit 1
+  printf 'check-sh: %s\n' "$summary"
+  exit 0
 fi
 
 # ---- the documents ----------------------------------------------------------------
@@ -1194,14 +1230,6 @@ fi
 # one copy per check gets one defect and this same script must go red for that defect's
 # own reason, since a gate whose findings all come from one over-broad branch reads as
 # thorough while testing one thing. A nested run skips this section.
-
-# Built once and printed by whichever exit is reached: an exit code does not say what was
-# examined, and a run that examined nothing exits 0 too, so every run states its verdict
-# and names what it did not do
-summary=$(printf '%s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked' \
-  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" \
-  "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)")
-((bash_only == 0)) || summary="$summary; --bash-only, so nothing that reads the script as a tree ran"
 
 if [[ -n "${CHECK_SH_NESTED:-}" ]]; then
   printf 'check-sh: %s; self-test skipped\n' "$summary"

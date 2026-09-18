@@ -327,43 +327,53 @@ check_behaviour() {
   refuses "-m with no document" "-m needs a document" templates/script.sh -m
   refuses "-c with one file" "-c needs two files" templates/script.sh -c templates/completions/script.sh.bash
   refuses "a document it cannot read" "cannot read" -d "$work/not-a-doc.md" templates/script.sh
-  refuses "a script with nothing to check" "nothing to check" tests/fixtures/nothing-to-check.sh
+  # Not under CHECK_BASH32: there every call is --bash-only, where an empty subcommand and
+  # flag list is what the mode produces rather than what the script holds, so the checker
+  # does not make that refusal and asking for it here would be asking for a lie
+  [[ -n "${CHECK_BASH32:-}" ]] ||
+    refuses "a script with nothing to check" "nothing to check" tests/fixtures/nothing-to-check.sh
   refuses "a script whose --help fails" "--help exited 1" tests/fixtures/help-fails.sh
   refuses "an unknown flag" "check-sh.sh [-n NAME]" --bogus templates/script.sh
   refuses "an unknown template" "no such template" --template nope
 
-  echo "== the checker's own self-test notices when one of its checks is taken away"
-  # check-sh.sh proves its checks on a planted copy every run. This is the proof of that
-  # proof: a copy of the checker with one finding neutered must fail its own self-test,
-  # and for that check's reason. Otherwise the self-test could be passing on nothing
-  neutered() { # neutered FRAGMENT WHAT -> a copy whose finding holding FRAGMENT is silenced must go red for WHAT
-    local fragment="$1" what="$2" out
-    FRAG="$fragment" awk 'index($0, ENVIRON["FRAG"]) { sub(/finding "/, ": \"") } { print }' check-sh.sh >"$work/neutered.sh"
-    grep -qF -- "$fragment" "$work/neutered.sh" || fail "no line of check-sh.sh holds '$fragment' — the neutering matched nothing"
-    # A copy run directly, so it takes the mode the same way checker() hands it out
-    local tree_flag=()
-    [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
-    if out=$("$BASH" "$work/neutered.sh" ${tree_flag[@]+"${tree_flag[@]}"} templates/script.sh 2>&1); then
-      fail "check-sh.sh with '$fragment' silenced passed its own self-test — the self-test does not prove that check"
-    fi
-    [[ "$out" == *"a copy with $what"*" passed"* ]] ||
-      fail "check-sh.sh with '$fragment' silenced failed for a reason other than its own: $out"
-  }
-  neutered "dispatches '\$s' but its help never mentions" "a subcommand missing from the help"
-  neutered "accepts \$flag but its help never mentions it" "a flag missing from the help"
-  neutered "exits \$n but its help never lists" "an exit code missing from the help"
-  neutered "never names \$name \$s" "a document that lost a subcommand"
-  neutered "is offered by a completion but not parsed" "a completion offering a flag that is not parsed"
-  neutered "prints other text through a pipe than from the file" "a usage() printing its help back with sed"
-  neutered "belongs to the help alone: \$row" "a usage line in the header comment"
-  # Two plants lean on the proxy — a 3.2 claim in the canonical script and in a plain one —
-  # and whichever the self-test reaches first is the one that has to notice
-  neutered "claims \$claimed but" "a bash 4 construct"
-  # And the count of planted defects the summary reports is the count the self-test runs:
-  # a lost row would lower it while everything stayed green
-  summary=$(checker templates/script.sh 2>&1 | tail -n 1)
-  [[ "$summary" =~ \ ([0-9]+)\ planted\ defects\ caught$ ]] || fail "check-sh.sh's summary does not report its planted defects: $summary"
-  ((BASH_REMATCH[1] >= 20)) || fail "check-sh.sh reports ${BASH_REMATCH[1]} planted defects, fewer than the 20 it is written to plant"
+  # Not under CHECK_BASH32: every call there is --bash-only, which skips the self-test
+  # because most of what it falsifies is not run, so a neutered copy would pass and this
+  # would report the self-test as proving nothing — which in that mode is true and is not
+  # what this check is for
+  if [[ -z "${CHECK_BASH32:-}" ]]; then
+    echo "== the checker's own self-test notices when one of its checks is taken away"
+    # check-sh.sh proves its checks on a planted copy every run. This is the proof of that
+    # proof: a copy of the checker with one finding neutered must fail its own self-test,
+    # and for that check's reason. Otherwise the self-test could be passing on nothing
+    neutered() { # neutered FRAGMENT WHAT -> a copy whose finding holding FRAGMENT is silenced must go red for WHAT
+      local fragment="$1" what="$2" out
+      FRAG="$fragment" awk 'index($0, ENVIRON["FRAG"]) { sub(/finding "/, ": \"") } { print }' check-sh.sh >"$work/neutered.sh"
+      grep -qF -- "$fragment" "$work/neutered.sh" || fail "no line of check-sh.sh holds '$fragment' — the neutering matched nothing"
+      # A copy run directly, so it takes the mode the same way checker() hands it out
+      local tree_flag=()
+      [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
+      if out=$("$BASH" "$work/neutered.sh" ${tree_flag[@]+"${tree_flag[@]}"} templates/script.sh 2>&1); then
+        fail "check-sh.sh with '$fragment' silenced passed its own self-test — the self-test does not prove that check"
+      fi
+      [[ "$out" == *"a copy with $what"*" passed"* ]] ||
+        fail "check-sh.sh with '$fragment' silenced failed for a reason other than its own: $out"
+    }
+    neutered "dispatches '\$s' but its help never mentions" "a subcommand missing from the help"
+    neutered "accepts \$flag but its help never mentions it" "a flag missing from the help"
+    neutered "exits \$n but its help never lists" "an exit code missing from the help"
+    neutered "never names \$name \$s" "a document that lost a subcommand"
+    neutered "is offered by a completion but not parsed" "a completion offering a flag that is not parsed"
+    neutered "prints other text through a pipe than from the file" "a usage() printing its help back with sed"
+    neutered "belongs to the help alone: \$row" "a usage line in the header comment"
+    # Two plants lean on the proxy — a 3.2 claim in the canonical script and in a plain one —
+    # and whichever the self-test reaches first is the one that has to notice
+    neutered "claims \$claimed but" "a bash 4 construct"
+    # And the count of planted defects the summary reports is the count the self-test runs:
+    # a lost row would lower it while everything stayed green
+    summary=$(checker templates/script.sh 2>&1 | tail -n 1)
+    [[ "$summary" =~ \ ([0-9]+)\ planted\ defects\ caught$ ]] || fail "check-sh.sh's summary does not report its planted defects: $summary"
+    ((BASH_REMATCH[1] >= 20)) || fail "check-sh.sh reports ${BASH_REMATCH[1]} planted defects, fewer than the 20 it is written to plant"
+  fi
 
   # check-sh.sh claims bash 3.2 and travels to repositories that run CI on macOS. A grep
   # for newer syntax is a proxy; the mechanism is the behaviour half under the real 3.2,
