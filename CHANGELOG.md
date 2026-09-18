@@ -6,10 +6,12 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Changed
 
+- a zsh completion is now formatted as well as parsed: the gate runs `shfmt -d -ln zsh -i 2 -ci` on it beside `zsh -n`, so the zsh half of a completion pair is held to the same spelling as every other shell file the family ships. Nothing needed reformatting to satisfy it. The dialect is young, having arrived in shfmt 3.13.0, so a shfmt bump can redden a zsh file on formatting alone; `references/lint.md` says to read that diff rather than drop the check
 - the rule for a dropped `-e` names two shapes instead of one, because the single one it named — findings are counted — fitted only two of the five scripts in the family that drop it. The second is a script whose verdict is another command's status: a harness passing `CMD`'s through, a checker asserting on the status of what it runs, a stub whose exit code is the scenario. Each would be killed by `-e` before it could report, and none counts anything. The comment above the line now says which of the two the file is, in its own words, since the boilerplate for the wrong one sends the next reader looking for a counter that is not there
 
 ### Fixed
 
+- `references/lint.md` said `shfmt` has no zsh parser. It has had one since 3.13.0, under `-ln zsh`, and the half of that sentence about shellcheck — which really has no zsh dialect — was carrying the false half. `references/completions.md` and `references/harness.md` said the same thing in weaker words, "linted by nothing else" and "`zsh -n` and nothing else", and lose it
 - `references/help.md`'s canonical help block ended its `Exit` line with a full stop, in the fenced example and again as inline code, while `references/shape.md` and `templates/script.sh` show the same line bare. The page that owns what a help must list was teaching the opposite of the rule on the facing page, and it is the block every reader copies
 
 ## 2026-09-17
