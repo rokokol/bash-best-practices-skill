@@ -336,6 +336,13 @@ mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1,
     {
       out = ""
       opener = ""
+      # Arithmetic depth, counted per line: inside $(( )) a `<<` is a left shift, and
+      # reading it as a heredoc opener takes the next word for a terminator that never
+      # arrives, so the mask runs to the end of the file and the checker then finds
+      # nothing to check and says so as though it had checked. Per line and not across
+      # them on purpose: an unclosed count would suppress real heredocs, and failing to
+      # blank one shows up as findings a reader can see, where blanking everything does not
+      arith = 0
       n = length($0)
       for (i = 1; i <= n; i++) {
         c = substr($0, i, 1)
@@ -359,7 +366,9 @@ mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1,
         if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) { out = out substr($0, i); break }
         if (substr($0, i, 2) == "$\047") { q = "$"; out = out substr($0, i, 2); i++; continue }
         if (c == "\047" || c == "\"") { q = c; out = out c; continue }
-        if (opener == "" && substr($0, i, 2) == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
+        if (substr($0, i, 3) == "$((") { arith++; out = out substr($0, i, 3); i += 2; continue }
+        if (arith > 0 && substr($0, i, 2) == "))") { arith--; out = out substr($0, i, 2); i++; continue }
+        if (arith == 0 && opener == "" && substr($0, i, 2) == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
           match(substr($0, i), /^<<-?[\047"]?[A-Za-z_][A-Za-z0-9_]*/))
           opener = substr($0, i, RLENGTH)
         out = out c
@@ -695,6 +704,55 @@ proxy_only=0
       }
       for (i = 1; i <= n; i++) print owner "\t" parts[i]
     }' "$code")
+
+  # Scaffolding, and it goes when the lexer above does: the same two facts read out of the
+  # tree, and a refusal if the two readers disagree. It runs on every script the checker is
+  # given rather than on the canonical one alone, so the corpus proving the move is every
+  # script the family gates. A disagreement is exit 2 and not a finding — the script is not
+  # what is wrong — and it is the signal the move has to stop rather than be finished
+  #
+  # The rules the table is read by here are the ones stage 2 will keep. A flag pattern is a
+  # flag wherever it sits, so `-v | --version)` on the dispatcher is a global flag the help
+  # must list, while `run)` beside it is a subcommand; -h and --help carry no help row of
+  # their own and are dropped on both sides, as the help check below drops them
+  ((bash_only)) || if ! read_tree "$script" >"$work/tree.tsv" 2>"$work/tree.err"; then
+    # Whose problem it is, decided by the parser that matters: a script this bash rejects
+    # is reported below in bash's own words, which is where the message belongs and what
+    # the self-test expects. One bash parses and shfmt does not is the two disagreeing,
+    # and then there is no tree to read and nothing here can stand in for it
+    if "$BASH" -n "$script" 2>/dev/null; then
+      die "shfmt cannot read $name, which this bash parses: $(tr '\n' ' ' <"$work/tree.err")"
+    fi
+  else
+    awk -F'\t' '
+      $2 == "case" && $3 == "-" && $6 == "$cmd" { disp = $1; next }
+      $2 == "arm" && $5 == disp {
+        n = split($6, p, "|")
+        for (i = 1; i <= n; i++) if (p[i] ~ /^[a-z][a-z0-9-]*$/ && p[i] != "help") print p[i]
+      }' "$work/tree.tsv" | sort -u >"$work/tree.subs"
+    printf '%s\n' "${subs[@]+"${subs[@]}"}" | sed '/^$/d' | sort -u >"$work/lex.subs"
+    cmp -s "$work/tree.subs" "$work/lex.subs" ||
+      die "the tree and the lexer disagree about $name's subcommands:"$'\n'"$(diff "$work/tree.subs" "$work/lex.subs")"
+
+    awk -F'\t' '
+      $2 == "arm" && $6 ~ /^-/ {
+        owner = "-"
+        if ($3 != "-") {
+          if (substr($3, 1, 4) != "cmd_") next
+          owner = substr($3, 5); gsub(/_/, "-", owner)
+        }
+        n = split($6, p, "|")
+        for (i = 1; i <= n; i++)
+          if (p[i] ~ /^--?[a-zA-Z]/ && p[i] != "-h" && p[i] != "--help") print owner "\t" p[i]
+      }' "$work/tree.tsv" | sort -u >"$work/tree.flags"
+    # awk and not `grep -E '\t…'`: in a POSIX ERE `\t` is the letter t, so the grep spelling
+    # silently matched nothing and let both exempt flags through on this side alone
+    printf '%s\n' "${flags[@]+"${flags[@]}"}" | sed '/^$/d' |
+      awk -F'\t' '$2 != "-h" && $2 != "--help"' | sort -u >"$work/lex.flags"
+    cmp -s "$work/tree.flags" "$work/lex.flags" ||
+      die "the tree and the lexer disagree about $name's flags:"$'\n'"$(diff "$work/tree.flags" "$work/lex.flags")"
+  fi
+
   # A plain script with no dispatcher and no flag has no help for anything to agree with.
   # If its header claims bash 3.2 the proxy below is still worth running, and it is all
   # that runs; with no claim either there is nothing to check, which is a refusal
@@ -1436,7 +1494,7 @@ expect_red "$c" "has: while read -r l; do :; done < <(cat <<X" "a heredoc inside
 c=$(copy heredoc-beside-subst)
 # What reads like one and is not: a shift inside $(( )), a here-string, a ( inside a
 # string inside $( ), a heredoc once the substitution has closed, and one in backticks
-plant "$c" 'HERE=' "n=\$(echo \$((1<<k)))
+plant "$c" 'HERE=' "n=\$(k=2; echo \$((1<<k)))
 x=\$(tr a b <<<word)
 y=\"\$(echo \"(\")\"; cat <<X >/dev/null
 b
