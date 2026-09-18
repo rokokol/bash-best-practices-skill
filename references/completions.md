@@ -26,7 +26,7 @@ An installer's own pair is the exception, because an installer is run out of a c
 
 - **`#compdef <cmd>` is the first line, and it plays the shebang's role.** The file is never executed, only autoloaded, so a shebang would be dead in it too; that line is the binding, and the `_<cmd>` filename is only convention
 - **It defines its function and ends by calling it** — `_<cmd> "$@"` as the last line, the autoload convention. A pair sourced from a checkout rather than installed is not on `$fpath` and cannot be autoloaded, so it registers itself with `compdef _fn cmd`, which also makes `./cmd` complete, since zsh dispatches on the command's basename
-- **`zsh -n` is the whole check.** shellcheck has no zsh dialect, and `bash -n` on a `#compdef` file reports syntax errors that are not errors, so the zsh half is parse-checked by zsh and linted by nothing else ([lint.md](lint.md))
+- **`zsh -n` is the parse check.** shellcheck has no zsh dialect, and `bash -n` on a `#compdef` file reports syntax errors that are not errors, so the parse is zsh's to make; `shfmt` reads the dialect under `-ln zsh` and can format one ([lint.md](lint.md))
 
 ## Subcommands, and where the words come from
 

@@ -113,7 +113,7 @@ took 3s
 
 **Judge a script by its shebang, not by the shell that invoked it, and run it as a file rather than pasting its body into the tool.** A file beginning `#!/usr/bin/env bash` is bash whatever the agent is typing into, so "it failed in my shell" is not a finding about the script and "it worked in my shell" is not a pass ([shape.md](shape.md)). Pasting reinterprets every line under zsh and loses the whole class of differences above, along with `$0`, `BASH_SOURCE` and the `set -euo pipefail` the file opens with — `bash ./script.sh args` is the honest invocation, and `"$BASH" ./script.sh` inside a gate keeps nested runs on the interpreter the gate is proving
 
-**`bash -n` and `zsh -n` are the parse checks, one per dialect.** A bash script is parse-checked with `bash -n`, a zsh completion with `zsh -n` and nothing else — shellcheck has no zsh dialect, and `bash -n` on a `#compdef` file reports syntax errors that are not ([completions.md](completions.md), [lint.md](lint.md))
+**`bash -n` and `zsh -n` are the parse checks, one per dialect.** A bash script is parse-checked with `bash -n`, a zsh completion with `zsh -n` — shellcheck has no zsh dialect, and `bash -n` on a `#compdef` file reports syntax errors that are not ([completions.md](completions.md), [lint.md](lint.md))
 
 **Keep separators quoted, or use `printf`.** Most of the differences above vanish under quoting — `"${h}:${b}"` rather than `$h:$b`, `"$v"` rather than `$v`, `'=1.2.3'` rather than `=1.2.3` — and `printf '%s\n'` with an explicit format is the portable way to emit a value, where `echo -n` is not portable at all
 

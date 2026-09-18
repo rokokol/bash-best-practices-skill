@@ -5,7 +5,7 @@ Two tools read every script in this family — shellcheck for what the shell wil
 ## The order: `bash -n`, then shellcheck, then `shfmt`
 
 - **`bash -n` runs first, on every file.** It parses without executing, so a missing `fi` is reported as a syntax error rather than as thirty shellcheck findings downstream of it, and a syntax-breaking mutation is classified as unusable instead of a defect the suite caught
-- **A zsh file gets `zsh -n` and nothing else.** shellcheck has no zsh dialect and `shfmt` has no zsh parser; a completion under `share/zsh/site-functions/` is zsh, so the parse is the whole check it can have ([completions.md](completions.md))
+- **A zsh file is parse-checked by zsh.** shellcheck has no zsh dialect, so a completion under `share/zsh/site-functions/` gets `zsh -n`; `shfmt` does have one, under `-ln zsh` since 3.13.0, so a zsh file can be formatted even though it cannot be shellchecked ([completions.md](completions.md))
 - **A shebang-less file that is bash says so in its first line**: `# shellcheck shell=bash`. Bash completions are sourced, never executed, so they carry no shebang, and without the directive shellcheck either guesses `sh` and reddens every `[[` or refuses the file outright
 - **`shfmt -d -i 2 -ci`, in that spelling.** `-d` prints a diff and exits non-zero instead of rewriting, which is what a gate wants — the rewrite is a thing a person does and reads. Two-space indent and `-ci` (case-indented arms) are what the family's scripts are already written in, and they are what makes the dispatcher and flag-parser shapes in [shape.md](shape.md) come out the way `check-sh.sh` parses them
 
