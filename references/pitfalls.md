@@ -153,6 +153,18 @@ status=0
 
 ## The interpreter
 
+**`<<` opens a heredoc everywhere except inside `$(( ))`, where it is a left shift.** The same four characters are two constructs, and only the surrounding arithmetic tells them apart, so anything reading shell text rather than parsing it takes the word after the shift for a terminator. That terminator never arrives, and the reader treats the rest of the file as heredoc body — which is silent, because a scanner that has swallowed a file reports nothing wrong about it. Read the text with a parser, `shfmt --to-json` or `bash --pretty-print`; where a scan is all there is, count `$((` depth and open no heredoc inside one:
+
+```console
+$ printf '%s\n' 'n=$((1<<k))' 'case "$cmd" in' '  run) : ;;' 'esac' > naive.sh
+$ awk 'match($0, /<<-?[A-Za-z_][A-Za-z0-9_]*/) { print NR ": terminator = " substr($0, RSTART + 2, RLENGTH - 2) }' naive.sh
+1: terminator = k
+$ grep -cx k naive.sh
+0
+```
+
+The scan takes `k` for a terminator, no line is ever `k`, and everything from the shift onward is read as heredoc body — the dispatcher included. Nothing about that is visible in the output: the reader simply finds no dispatcher, and a count of zero is not a complaint
+
 **bash reads a script while it runs, so an in-place rewrite lands mid-execution.** The running copy reads on from the byte offset it had reached, and in a truncated file there is nothing there:
 
 ```console

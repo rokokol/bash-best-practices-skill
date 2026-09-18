@@ -6,6 +6,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 
 ### Added
 
+- `references/pitfalls.md`: `<<` opens a heredoc everywhere except inside `$(( ))`, where it is a left shift, so anything reading shell text rather than parsing it takes the word after the shift for a terminator that never arrives and swallows the rest of the file. The failure is silent, because a scanner that has swallowed a file reports nothing wrong about it — read the text with a parser, or count `$((` depth and open no heredoc inside one
 - the dev shell carries `jq`. Nothing uses it yet: `check-sh.sh` is moving off its hand-written awk lexer to reading the script it is given as a tree, out of `shfmt --to-json`, and jq is what will flatten that tree into the rows its rules read. It lands first, here and in every repository that vendors the checker, so that the checker finds it already present when the cascade brings it rather than going red on arrival
 
 ### Changed
