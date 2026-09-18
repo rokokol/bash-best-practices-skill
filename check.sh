@@ -95,8 +95,12 @@ check_lint() {
   # repository ships, the gate included, so nothing is left for a loop here
   shellcheck "${scripts[@]}" "${bash_completions[@]}"
   shfmt -d -i 2 -ci "${scripts[@]}" "${bash_completions[@]}"
-  # zsh is not shellcheck's language; a parse is what can be checked
+  # zsh is not shellcheck's language, so zsh makes the parse itself; shfmt does read the
+  # dialect, under -ln zsh since 3.13.0, so the format half is checked the same way the
+  # bash files are. The dialect is young, so a shfmt bump can redden a zsh file here on
+  # formatting alone — that is a real diff to read, not a reason to drop the check
   for z in "${zsh_completions[@]}"; do zsh -n "$z"; done
+  shfmt -d -ln zsh -i 2 -ci "${zsh_completions[@]}"
   # completions.md and harness.md say the parse has to be zsh's own, because `bash -n` on a
   # zsh file reports syntax errors that are not errors. Every zsh file this family ships
   # happens to sit in the subset bash also parses, so the claim is load-bearing and
