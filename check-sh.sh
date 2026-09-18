@@ -1124,7 +1124,12 @@ if ((! proxy_only)); then
       [[ -n "$var" ]] || continue
       variables=$((variables + 1))
       has_token "$var" <<<"$corpus" || finding "$name reads $var but its help never mentions it"
-    done < <(grep -oE "(^|[^A-Za-z0-9_])${prefix}[A-Z0-9_]+" "$script" | sed 's/^[^A-Za-z0-9_]//' | sort -u)
+      # A parameter expansion is where a variable is read. The grep this replaces ran over
+      # the raw file, so a name written in a comment or inside the help's own heredoc
+      # counted as a use, and a help could satisfy the check by mentioning a variable the
+      # script never reads
+    done < <(awk -F'\t' -v p="$prefix" '
+      $2 == "param" && index($6, p) == 1 && $6 ~ /^[A-Z0-9_]+$/ { print $6 }' "$tree" | sort -u)
     ((variables > 0)) || finding "$name reads no $prefix variable at all — the prefix is wrong, or the extractor is"
   fi
 
@@ -1139,8 +1144,10 @@ if ((! proxy_only)); then
     [[ -n "$n" ]] || continue
     grep -qx -- "$n" <<<"$codes_listed" ||
       finding "$name exits $n but its help never lists $n on an Exit line"
-  done < <(grep -vE '^[[:space:]]*#' "$code" |
-    grep -oE '(^|[;{(&|[:space:]])exit [1-9][0-9]*[[:space:]]*(;|&&|\|\||$)' | grep -oE '[0-9]+' | sort -u)
+    # A call to exit with one literal argument. Being a call is what the three greps this
+    # replaces were spelling out by hand — outside a comment, ending its statement, not
+    # inside a quoted awk program — and the tree answers all three by construction
+  done < <(awk -F'\t' '$2 == "call" && $6 == "exit" && $7 ~ /^[1-9][0-9]*$/ { print $7 }' "$tree" | sort -u)
 fi
 
 # The same stop as inside the help section, for the path that skipped it: a script the
