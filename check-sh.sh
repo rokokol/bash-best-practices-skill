@@ -2,7 +2,9 @@
 # Other repositories take this file through the vendoring cascade (references/bump-cascade.md
 # in https://github.com/rokokol/ci-skill): a copy is never edited in place, a change is made
 # here and reaches them from here
-# Needs bash 3.2 and POSIX tools only, so it runs on a macOS runner unchanged
+# Needs bash 3.2 and POSIX tools only for its own code, so it runs on a macOS runner
+# unchanged; the script it is given is read as a tree, by shfmt and jq, and without them
+# only the checks that ask this bash a question run (--bash-only)
 set -euo pipefail
 
 usage() {
@@ -28,6 +30,11 @@ it runs. It has no repo-specific part, and belongs in a repository's own gate
   -m DOC       a document that mentions only some of them and sends the reader to the
                help for the rest: every `NAME word` it spells must be real; repeatable
   -c BASH ZSH  the two completion files, checked both ways
+  -b, --bash-only
+               run only the checks that ask this bash a question, and none that read the
+               script as a tree; it needs no shfmt and no jq. It exists for a runner that
+               has neither, says in the summary that the tree half was skipped, and is
+               never chosen on its own — a missing tool is a refusal, not a quiet pass
   --template   print the canonical script, or its bash or zsh completion, and exit
 
 The shapes it reads are the standard's own: a `case "$cmd"` dispatcher at the top level
@@ -228,8 +235,13 @@ mentions=()
 comp_bash=""
 comp_zsh=""
 script=""
+bash_only=0
 while (($#)); do
   case "$1" in
+    -b | --bash-only)
+      bash_only=1
+      shift
+      ;;
     -n)
       (($# >= 2)) || die "-n needs a name"
       name="$2"
@@ -362,6 +374,183 @@ mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1,
     }
   ' "$1"
 }
+
+# ---- the tree -------------------------------------------------------------------------
+# `shfmt --to-json` emits mvdan.cc/sh's whole syntax tree, with a line number on every
+# node, and the jq program below flattens it into one row per fact. The rules above read
+# those rows with awk and grep, as they always have, so the non-POSIX dependency lives in
+# this one stage: a change in shfmt's JSON is a change to this program and to nothing else
+#
+# The columns are LINE, KIND, FN, SUBST, OWNER, A, B. FN is the outermost enclosing
+# function, which is what the awk lexer above tracks — it matches a function opening at
+# column 0 — so both read a nested function's contents as its outermost one's. SUBST is 1
+# inside `$( )` and `<( )` and 0 inside backticks and `$(( ))`, which is exactly the
+# bash 3.2 heredoc rule
+facts_jq() {
+  cat <<'JQ'
+def part_text:
+  if .Type == "Lit" or .Type == "SglQuoted" then (.Value // "")
+  elif .Type == "DblQuoted"
+    then (if [(.Parts // [])[] | .Type] | all(. == "Lit")
+          then [(.Parts // [])[] | .Value] | join("") else null end)
+  else null end;
+
+# A word's literal text when every part is literal, "$" when anything in it expands
+def word_text:
+  if . == null then "-"
+  elif (.Parts // []) | length == 0 then ""
+  else ([.Parts[] | part_text] | if any(. == null) then "$" else join("") end) end;
+
+# `"$cmd"` is a DblQuoted holding a ParamExp; `$cmd` is the ParamExp bare
+def case_word:
+  (.Parts[0] // {}) as $p
+  | if $p.Type == "ParamExp" then "$" + $p.Param.Value
+    elif $p.Type == "DblQuoted" and (($p.Parts[0] // {}).Type == "ParamExp")
+      then "$" + $p.Parts[0].Param.Value
+    else ($p.Value // "?") end;
+
+def emit($fn; $subst):
+  if type == "array" then (.[] | emit($fn; $subst))
+  elif type != "object" then empty
+  else
+    if .Type == "FuncDecl" then
+      [.Pos.Line, "func", $fn, $subst, "-", .Name.Value, (.End.Line | tostring)],
+      # The name binds before the descent, so the outermost declaration keeps FN
+      (.Name.Value as $n
+       | .Body | emit((if $fn == "-" then $n else $fn end); $subst))
+
+    elif .Type == "CaseClause" then
+      (.Pos.Line as $c
+       | [.Pos.Line, "case", $fn, $subst, "-", (.Word | case_word), (.End.Line | tostring)],
+         (.Items[]?
+          | [.Pos.Line, "arm", $fn, $subst, ($c | tostring),
+             ([.Patterns[]? | word_text] | join("|")), (.Op // "-")],
+            (.Stmts | emit($fn; $subst))))
+
+    elif .Type == "CmdSubst" or .Type == "ProcSubst" then
+      (.Stmts | emit($fn; 1))
+
+    elif .Type == "CallExpr" then
+      [.Pos.Line, "call", $fn, $subst, "-",
+       ((.Args[0] // null) | word_text),
+       # "-" rather than the empty string, so no row ends in a tab: the golden table
+       # below is a heredoc, and trailing whitespace there is what an editor eats
+       ([.Args[1:][]? | word_text] | join(" ") | if . == "" then "-" else . end)],
+      # Assigns as well as Args: a bare `v=$(…)` is a CallExpr with no Args at all, so a
+      # descent into Args alone loses every assignment and the substitutions inside them
+      (.Args | emit($fn; $subst)), (.Assigns | emit($fn; $subst))
+
+    elif .Type == "ParamExp" then
+      [.Pos.Line, "param", $fn, $subst, "-", (.Param.Value // "-"), (.Exp.Op // "-")],
+      (to_entries[] | .value | emit($fn; $subst))
+
+    # A redirection carries no "Type" of its own — its keys are Pos, End, Op, OpPos, Word
+    # and Hdoc — so it is recognised by the one key nothing else has
+    elif has("Hdoc") then
+      [.Pos.Line, "redir", $fn, $subst, "-", (.Op // "-"), (.Word | word_text)],
+      (if .Hdoc != null
+       then [.Pos.Line, "heredoc", $fn, $subst, "-",
+             (.Word | word_text), (.Hdoc.End.Line | tostring)]
+       else empty end),
+      (.Word | emit($fn; $subst))
+
+    else (to_entries[] | .value | emit($fn; $subst))
+    end
+  end;
+
+# Comments hang off the statements they precede rather than off the file, and carry no
+# "Type" either; Hash, the position of the `#`, is what marks one. They are gathered in
+# their own pass so that the descent above stays about code
+[.. | objects | select(has("Hash"))
+ | [.Pos.Line, "comment", "-", 0, "-", .Text, "-"]] as $c
+| ($c[], (.Stmts | emit("-"; 0)))
+| @tsv
+JQ
+}
+
+read_tree() { # read_tree FILE -> the facts table on stdout
+  # --to-json reads stdin only, measured; --filename is what lets the dialect be guessed,
+  # and it is taken before the pipeline so the file is named once inside it
+  local f="$1" base
+  base=$(basename -- "$f")
+  shfmt --to-json --filename "$base" -ln auto <"$f" | jq -r "$(facts_jq)"
+}
+
+# A script exercising every kind of row the table has, and the table it must produce. The
+# pair is the frontend's own regression test and, on every run that reads a tree, the
+# check that shfmt's JSON still has the shape this program reads
+#
+# shfmt moved that shape once: 3.13.1 wrote `"Op": 71` where 3.14.1 writes `"Op": "<<"`.
+# A version number is a proxy for the shape, so nothing here compares one — this compares
+# the shape itself, which is what a rule downstream actually depends on. It runs before
+# any rule reads a row, so a shape that moved is one refusal naming the tool rather than a
+# scattering of findings, or worse a quiet under-report
+tree_probe() {
+  cat <<'PROBE'
+#!/usr/bin/env bash
+# probe
+f() {
+  case "$1" in
+    -n | --dry) echo "x" ;;
+  esac
+  cat <<'HD'
+body
+HD
+  g="${2:?need}"
+  h=$(printf '%s' ok)
+}
+PROBE
+}
+
+# What the probe must flatten to. A run that disagrees prints the table it got, which is
+# both the diagnosis and the replacement for this heredoc — read that diff like code, since
+# pasting it unread turns whatever shfmt started doing into what this file expects
+tree_golden() {
+  cat <<'GOLDEN'
+1	comment	-	0	-	!/usr/bin/env bash	-
+2	comment	-	0	-	 probe	-
+3	func	-	0	-	f	12
+4	case	f	0	-	$1	6
+5	arm	f	0	4	-n|--dry	;;
+5	call	f	0	-	echo	x
+7	call	f	0	-	cat	-
+7	redir	f	0	-	<<	HD
+7	heredoc	f	0	-	HD	9
+10	call	f	0	-	-	-
+10	param	f	0	-	2	:?
+11	call	f	0	-	-	-
+11	call	f	1	-	printf	%s ok
+GOLDEN
+}
+
+# Both tools, then the shape, before a single rule reads a row
+tree_preflight() {
+  local missing=""
+  command -v shfmt >/dev/null 2>&1 || missing="shfmt"
+  command -v jq >/dev/null 2>&1 || missing="${missing:+$missing and }jq"
+  [[ -z "$missing" ]] ||
+    die "needs $missing to read SCRIPT as a tree, and nix develop -c is where the pinned one lives; on a machine with neither, --bash-only runs the checks that ask this bash and says so"
+
+  tree_probe >"$work/probe.sh"
+  read_tree "$work/probe.sh" >"$work/probe.tsv" 2>"$work/probe.err" ||
+    die "shfmt or jq could not read the built-in probe: $(tr '\n' ' ' <"$work/probe.err")"
+  tree_golden >"$work/probe.want"
+  # The table it did produce goes with the refusal: it is what says how the shape moved,
+  # and it is what replaces tree_golden's heredoc once a person has read the difference
+  cmp -s "$work/probe.tsv" "$work/probe.want" || {
+    printf 'check-sh: the tree from shfmt %s is not the one tree_golden describes — either the tool moved or the table did, and 3.14.0 is the oldest known to agree\n' \
+      "$(shfmt --version 2>/dev/null || echo '(version unknown)')" >&2
+    printf 'check-sh: the probe flattened to this instead, which is what tree_golden would become:\n' >&2
+    sed 's/^/  /' "$work/probe.tsv" >&2
+    exit 2
+  }
+}
+
+# Run it here, as soon as the frontend exists and long before any rule reads a row, so a
+# machine without the tools is refused rather than quietly checked with less. Degrading on
+# a missing tool was rejected: an extractor that finds nothing must never read as "nothing
+# drifted", or a bare machine exits 0 and believes the help agrees with the code
+((bash_only)) || tree_preflight
 
 # ERE-quoted, so a name with a dot matches itself and nothing else
 name_re=$(printf '%s' "$name" | sed 's/[][\\.*^$/+?(){}|]/\\&/g')
@@ -916,7 +1105,11 @@ EOF
 nested() { # nested DIR [ARGS...] -> this script on DIR's copy, falsification skipped
   local d="$1"
   shift
-  CHECK_SH_NESTED=1 "$BASH" "$self" "$@"
+  # The mode travels into every nested run: under --bash-only the tools are absent, and a
+  # nested call that asked for the tree would refuse and read as the checker being broken
+  local mode=()
+  ((bash_only == 0)) || mode=(--bash-only)
+  CHECK_SH_NESTED=1 "$BASH" "$self" ${mode[@]+"${mode[@]}"} "$@"
 }
 copy() { # copy NAME -> a fresh copy of the canon
   local c="$work/$1"
@@ -1271,5 +1464,10 @@ c=$(copy claimed-gnu-mktemp)
 plant "$c" 'HERE=' 'x=$(mktem'"p -d -p /tmp)"
 expect_red "$c" "has: x=\$(mktem""p -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
 
-printf 'check-sh: %s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked; %d planted defects caught\n' \
-  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)" "$planted"
+# A run that skipped the tree half says so on the line a caller reads, not only in the
+# flag it was given: a summary that looks like a full one is how a partial check gets
+# mistaken for a clean bill
+tree_note=""
+((bash_only == 0)) || tree_note="; --bash-only, so nothing that reads the script as a tree ran"
+printf 'check-sh: %s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked; %d planted defects caught%s\n' \
+  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)" "$planted" "$tree_note"
