@@ -312,78 +312,6 @@ finding() {
 work=$(mktemp -d "${TMPDIR:-/tmp}/check-sh.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-# The code as the checker reads it, line numbers kept. Every heredoc body is blanked: a
-# help text or a template inside one carries dispatchers, flag rows and exit lines of its
-# own, which are not this script's. The opening line stays, since it can carry code. A
-# `<<WORD` opens a heredoc only outside quotes and comments: read inside a string as an
-# opener, it blanked the rest of the file. With 1 the inside of every single-quoted string
-# is blanked too: single quotes suppress every expansion, so what they hold runs nothing
-# and a construct named there is none of the script's. With 2 double-quoted text goes as
-# well, and that copy is for the command-shaped patterns alone — a `declare -A` inside a
-# message is prose, and a gate proving a bash is 3.2 has to write it. The expansion-shaped
-# patterns keep reading double quotes, because `echo "${v,,}"` is a use and not a mention:
-# double quotes suppress nothing. Quotes are tracked across lines, since an awk or sed
-# program spans several
-mask_code() { # mask_code FILE 0|1|2 -> heredoc bodies, single-quoted text at 1, double too at 2
-  awk -v sq="$2" '
-    inhd {
-      line = $0
-      if (dash) sub(/^\t+/, "", line)
-      if (line == term) inhd = 0
-      print ""
-      next
-    }
-    {
-      out = ""
-      opener = ""
-      # Arithmetic depth, counted per line: inside $(( )) a `<<` is a left shift, and
-      # reading it as a heredoc opener takes the next word for a terminator that never
-      # arrives, so the mask runs to the end of the file and the checker then finds
-      # nothing to check and says so as though it had checked. Per line and not across
-      # them on purpose: an unclosed count would suppress real heredocs, and failing to
-      # blank one shows up as findings a reader can see, where blanking everything does not
-      arith = 0
-      n = length($0)
-      for (i = 1; i <= n; i++) {
-        c = substr($0, i, 1)
-        if (q == "\047") {
-          if (c == "\047") { q = ""; out = out c } else out = out (sq >= 1 ? " " : c)
-          continue
-        }
-        # $'"'"'...'"'"', where a backslash escapes the quote rather than standing for itself
-        if (q == "$") {
-          if (c == "\\") { out = out (sq >= 1 ? "  " : substr($0, i, 2)); i++; continue }
-          if (c == "\047") { q = ""; out = out c } else out = out (sq >= 1 ? " " : c)
-          continue
-        }
-        if (q == "\"") {
-          if (c == "\\") { out = out (sq >= 2 ? "  " : substr($0, i, 2)); i++; continue }
-          if (c == "\"") { q = ""; out = out c; continue }
-          out = out (sq >= 2 ? " " : c)
-          continue
-        }
-        if (c == "\\") { out = out substr($0, i, 2); i++; continue }
-        if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t;&|()]/)) { out = out substr($0, i); break }
-        if (substr($0, i, 2) == "$\047") { q = "$"; out = out substr($0, i, 2); i++; continue }
-        if (c == "\047" || c == "\"") { q = c; out = out c; continue }
-        if (substr($0, i, 3) == "$((") { arith++; out = out substr($0, i, 3); i += 2; continue }
-        if (arith > 0 && substr($0, i, 2) == "))") { arith--; out = out substr($0, i, 2); i++; continue }
-        if (arith == 0 && opener == "" && substr($0, i, 2) == "<<" && substr($0, i, 3) != "<<<" && (i == 1 || substr($0, i - 1, 1) != "<") &&
-          match(substr($0, i), /^<<-?[\047"]?[A-Za-z_][A-Za-z0-9_]*/))
-          opener = substr($0, i, RLENGTH)
-        out = out c
-      }
-      print out
-      if (opener != "") {
-        dash = (substr(opener, 3, 1) == "-")
-        sub(/^<<-?[\047"]?/, "", opener)
-        term = opener
-        inhd = 1
-      }
-    }
-  ' "$1"
-}
-
 # ---- the tree -------------------------------------------------------------------------
 # `shfmt --to-json` emits mvdan.cc/sh's whole syntax tree, with a line number on every
 # node, and the jq program below flattens it into one row per fact. The rules above read
@@ -740,12 +668,6 @@ proxy_only=0
   # BSD sed around it is an ordinary macOS machine, and its flags are the ones that differ
   posix_tools=0
   ! grep -q 'POSIX tools only' <<<"$header" || posix_tools=1
-  # One masked copy, and only for the bridge assertion's lexer side, which goes in stage 3
-  # along with this. The two further copies are gone with the proxy that needed them: the
-  # cmd and exp split existed because a pattern over text cannot tell a command from the
-  # same word inside a string, and a table of facts has no such question to answer
-  code="$work/code"
-  mask_code "$script" 0 >"$code"
 
   # The table, read once and shared by every rule that has moved onto it. Under --bash-only
   # there is none, and the rules below that need one do not run; the summary says so
@@ -837,56 +759,6 @@ proxy_only=0
       n = split($6, p, "|")
       for (i = 1; i <= n; i++) if (p[i] ~ /^--?[a-zA-Z]/) print owner "\t" p[i]
     }' "$tree")
-
-  lexer_flags=()
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    lexer_flags+=("$line")
-  done < <(awk '
-    # A one-line function, `usage() { …; }`, opens and closes on the same line
-    /^[a-z_][a-z0-9_]*\(\) \{/ && !/\}[[:space:]]*$/ { fn = $0; sub(/\(\).*/, "", fn); next }
-    /^}/ { fn = ""; next }
-    match($0, /^ *(--?[a-zA-Z][a-zA-Z0-9-]*)( *\| *--?[a-zA-Z][a-zA-Z0-9-]*)*\)/) {
-      line = substr($0, RSTART, RLENGTH)
-      sub(/\)$/, "", line)
-      gsub(/ /, "", line)
-      n = split(line, parts, "|")
-      owner = "-"
-      if (fn != "") {
-        if (substr(fn, 1, 4) == "cmd_") { owner = substr(fn, 5); gsub(/_/, "-", owner) } else next
-      }
-      for (i = 1; i <= n; i++) print owner "\t" parts[i]
-    }' "$code")
-
-  # Scaffolding, and it goes when the lexer above does: the same two facts read out of the
-  # tree, and a refusal if the two readers disagree. It runs on every script the checker is
-  # given rather than on the canonical one alone, so the corpus proving the move is every
-  # script the family gates. A disagreement is exit 2 and not a finding — the script is not
-  # what is wrong — and it is the signal the move has to stop rather than be finished
-  #
-  # The rules the table is read by here are the ones stage 2 will keep. A flag pattern is a
-  # flag wherever it sits, so `-v | --version)` on the dispatcher is a global flag the help
-  # must list, while `run)` beside it is a subcommand; -h and --help carry no help row of
-  # their own and are dropped on both sides, as the help check below drops them
-  if [[ -s "$tree" ]]; then
-    # shellcheck disable=SC2016 # `$cmd` is matched literally, in the script's own text
-    sed -n '/^case "\$cmd" in$/,/^esac$/p' "$code" |
-      sed -n 's/^  \([a-z][a-z0-9-]*\( *| *[a-z][a-z0-9-]*\)*\)).*/\1/p' |
-      tr '|' '\n' | tr -d ' ' | sed '/^help$/d;/^$/d' | sort -u >"$work/lex.subs"
-    printf '%s\n' "${subs[@]+"${subs[@]}"}" | sed '/^$/d' | sort -u >"$work/tree.subs"
-    cmp -s "$work/tree.subs" "$work/lex.subs" ||
-      die "the tree and the lexer disagree about $name's subcommands:"$'\n'"$(diff "$work/tree.subs" "$work/lex.subs")"
-
-    # -h and --help carry no help row of their own and are dropped on both sides, as the
-    # help check below drops them. awk and not `grep -E '\t…'`: in a POSIX ERE `\t` is the
-    # letter t, so the grep spelling matches nothing and exempts neither
-    printf '%s\n' "${lexer_flags[@]+"${lexer_flags[@]}"}" | sed '/^$/d' |
-      awk -F'\t' '$2 != "-h" && $2 != "--help"' | sort -u >"$work/lex.flags"
-    printf '%s\n' "${flags[@]+"${flags[@]}"}" | sed '/^$/d' |
-      awk -F'\t' '$2 != "-h" && $2 != "--help"' | sort -u >"$work/tree.flags"
-    cmp -s "$work/tree.flags" "$work/lex.flags" ||
-      die "the tree and the lexer disagree about $name's flags:"$'\n'"$(diff "$work/tree.flags" "$work/lex.flags")"
-  fi
 
   # A plain script with no dispatcher and no flag has no help for anything to agree with.
   # If its header claims bash 3.2 the proxy below is still worth running, and it is all
@@ -1108,11 +980,18 @@ if ((! proxy_only)); then
   # record, so no grep can decide the question, and the pipe can. A whole single-quoted
   # word is skipped as one, since an awk program holds the `;` and `$` that end a match
   if piped=$("$BASH" <(cat "$script") --help 2>&1) && [[ "$piped" != "$help" ]]; then
-    self_read='(sed|awk|head|tail|cat|grep|cut)[[:space:]]([^|;&$'"'"']|'"'"'[^'"'"']*'"'"')*"\$\{BASH_SOURC[E](\[0\])?\}"'
-    # `sed -n 1s…p` rather than `| head -n 1 |`: head stops reading at its line and the
-    # grep before it dies of SIGPIPE, which pipefail makes the status — swallowed by the
-    # `|| :` here, leaving the line number silently missing from the finding
-    where=$(grep -nE "$self_read" "$code" | grep -vE '^[0-9]+:[[:space:]]*#' | sed -n '1s/^\([0-9]*\):[[:space:]]*/ — line \1 has: /p' || :)
+    # Which line to name, best effort: a call to a reader whose arguments hold BASH_SOURCE.
+    # The tree decides that it is a call and which words are its arguments — a comment and
+    # a quoted awk program are neither — and the line itself is read only for the message.
+    # `$` in B means a word that expands, which is what "${BASH_SOURCE[0]}" is, so the text
+    # of that line is where the name can be looked for and nowhere else
+    where=$(awk -F'\t' '
+      $2 == "call" && $6 ~ /^(sed|awk|head|tail|cat|grep|cut)$/ && $7 ~ /(^| )\$( |$)/ { print $1 }' "$tree" |
+      sort -un | while IFS= read -r n; do
+      grep -q 'BASH_SOURCE' <<<"$(sed -n "${n}p" "$script")" || continue
+      printf ' — line %s has: %s\n' "$n" "$(sed -n "${n}s/^[[:space:]]*//p" "$script")"
+      break
+    done)
     finding "$name --help prints other text through a pipe than from the file, at exit 0: under bash <(…) it reads its own source${where:-, by a path no grep here can name}; print the help from a heredoc"
   fi
   # The two runs above are the last thing --bash-only does: they ask this bash a question
@@ -1452,7 +1331,7 @@ c=$(copy plain-claimed)
 # by the proxy alone: clean it passes, with a bash 4 construct it goes red
 printf '#!/usr/bin/env bash\n# Needs bash 3.2 and POSIX tools only.\necho hi\n' >"$c/plain.sh"
 nested "$c" "$c/plain.sh" >/dev/null 2>&1 || die "self-test: a plain script claiming bash 3.2 was refused rather than checked by the proxy"
-printf 'false && declar''e -A m\n' >>"$c/plain.sh"
+printf 'false && declare -A m\n' >>"$c/plain.sh"
 expect_red "$c" "claims bash 3.2 but $c/plain.sh:" "a bash 4 construct in a plain script claiming 3.2" "$c/plain.sh"
 
 c=$(copy helper-case)
@@ -1659,13 +1538,13 @@ expect_green "$c" "a copy holding <<WORD inside quotes" $(full "$c")
 c=$(copy literal-bash4)
 # A bash 4 construct inside single quotes is text, which a 3.2 parses happily: the proxy
 # reads what a script would run, and a single-quoted string runs nothing
-plant "$c" 'HERE=' "note='declar""e -A is bash 4'"
+plant "$c" 'HERE=' "note='declare -A is bash 4'"
 expect_green "$c" "a copy naming a bash 4 construct inside single quotes" -n script.sh "$c/script.sh"
 
 c=$(copy literal-bash4-double)
 # The same inside double quotes, which is where a message says it: a gate proving a bash
 # is 3.2 has to print the construct's name, and the proxy read that sentence as a use
-plant "$c" 'HERE=' "note=\"this bash accepts declar""e -A\""
+plant "$c" 'HERE=' "note=\"this bash accepts declare -A\""
 expect_green "$c" "a copy naming a bash 4 construct inside double quotes" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-bash4)
@@ -1729,12 +1608,12 @@ expect_red "$c" "does not parse under the bash running this checker" "a script w
 c=$(copy early-reader)
 # A text piped into a reader that stops early: the spelling is split so this file's own
 # check does not match the line that plants it
-plant "$c" 'HERE=' 'printf "%s\n" here | gre''p -q x || :'
+plant "$c" 'HERE=' 'printf "%s\n" here | grep -q x || :'
 expect_red "$c" "a reader that stops early kills its producer" "a text piped into grep -q" -n script.sh "$c/script.sh"
 
 c=$(copy claimed-gnu-mktemp)
 # shellcheck disable=SC2016 # the substitution belongs to the script being written out
 plant "$c" 'HERE=' 'x=$(mktem'"p -d -p /tmp)"
-expect_red "$c" "has: x=\$(mktem""p -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
+expect_red "$c" "has: x=\$(mktemp -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
 
 printf 'check-sh: %s; %d planted defects caught\n' "$summary" "$planted"
