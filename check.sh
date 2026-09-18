@@ -79,6 +79,17 @@ done
 
 check_lint() {
   echo "== the scripts parse and lint"
+  # First, because it decides what the tools below are handed. The lists are kept by hand
+  # and this family names its zsh completions `_cmd.sh`, so one reads as a bash script at a
+  # glance; landing in the bash-side lists sends it to shellcheck, which has no zsh dialect,
+  # and to `bash -n` inside check-sh.sh. Both then fail naming the wrong thing — shellcheck
+  # answers SC2148 "add a shebang" to a file whose first line is `#compdef` on purpose
+  for z in "${zsh_completions[@]}"; do
+    for b in "${scripts[@]}" "${bash_completions[@]}"; do
+      [[ "$z" != "$b" ]] ||
+        fail "$z is in zsh_completions and in the bash-side lists too, where shellcheck and bash -n would read zsh as bash"
+    done
+  done
   # No `bash -n` loop: check-sh.sh parses every script it is handed, names it, and on the
   # macOS runner does it under the 3.2 the claim is about. It is handed every script this
   # repository ships, the gate included, so nothing is left for a loop here
@@ -86,6 +97,15 @@ check_lint() {
   shfmt -d -i 2 -ci "${scripts[@]}" "${bash_completions[@]}"
   # zsh is not shellcheck's language; a parse is what can be checked
   for z in "${zsh_completions[@]}"; do zsh -n "$z"; done
+  # completions.md and harness.md say the parse has to be zsh's own, because `bash -n` on a
+  # zsh file reports syntax errors that are not errors. Every zsh file this family ships
+  # happens to sit in the subset bash also parses, so the claim is load-bearing and
+  # unexercised; the fixture is the one file that exercises it
+  zsh -n tests/fixtures/zsh-only.zsh ||
+    fail "tests/fixtures/zsh-only.zsh does not parse under zsh — the fixture is broken, not the claim"
+  if bash -n tests/fixtures/zsh-only.zsh 2>/dev/null; then
+    fail "bash -n accepts tests/fixtures/zsh-only.zsh, which completions.md and harness.md say it would not — remeasure the claim before trusting either page"
+  fi
 
   echo "== the workflows are valid, and their tools come from the lock rather than a registry"
   [[ -d .github/workflows ]] || fail ".github/workflows is missing — nothing gates this repository"
