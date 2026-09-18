@@ -1138,7 +1138,16 @@ fi
 # own reason, since a gate whose findings all come from one over-broad branch reads as
 # thorough while testing one thing. A nested run skips this section.
 
+# Built once and printed by whichever exit is reached: an exit code does not say what was
+# examined, and a run that examined nothing exits 0 too, so every run states its verdict
+# and names what it did not do
+summary=$(printf '%s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked' \
+  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" \
+  "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)")
+((bash_only == 0)) || summary="$summary; --bash-only, so nothing that reads the script as a tree ran"
+
 if [[ -n "${CHECK_SH_NESTED:-}" ]]; then
+  printf 'check-sh: %s; self-test skipped\n' "$summary"
   exit 0
 fi
 
@@ -1223,6 +1232,42 @@ replace_usage() { # replace_usage DIR LINE -> usage() and its heredoc replaced b
 c=$(copy faithful)
 # shellcheck disable=SC2046 # full() prints the arguments, split on purpose
 expect_green "$c" "the canonical script" $(full "$c")
+
+# The two below put the defect in the tools rather than in the text, which is the one
+# thing a planted line cannot express: a copy that quietly lost shfmt must refuse, and
+# --bash-only must be the only way past it. A PATH with the tool removed is how that is
+# asked, since a machine cannot be asked to forget it
+#
+# Both are about the preflight, which --bash-only turns off, so a run already in that mode
+# skips them: there is no tree-reading path for a missing tool to stop, and nested() would
+# hand the plant the very flag it exists to do without. The summary says that half of the
+# run did not happen, which is where a reader learns these did not either
+if ((bash_only == 0)); then
+  no_tree_path=""
+  # shellcheck disable=SC2086 # splitting PATH on : is the point
+  oldifs=$IFS
+  IFS=:
+  for p in $PATH; do
+    [ -x "$p/shfmt" ] || no_tree_path="${no_tree_path:+$no_tree_path:}$p"
+  done
+  IFS=$oldifs
+
+  c=$(copy no-shfmt)
+  status=0
+  out=$(PATH="$no_tree_path" nested "$c" "$c/script.sh" 2>&1) || status=$?
+  ((status == 2)) || die "self-test: a run that cannot read a tree was not refused (got $status): $out"
+  case "$out" in *"to read SCRIPT as a tree"*) ;; *) die "self-test: a run without shfmt was refused for the wrong reason: $out" ;; esac
+  planted=$((planted + 1))
+
+  c=$(copy bash-only)
+  status=0
+  out=$(PATH="$no_tree_path" nested "$c" --bash-only "$c/script.sh" 2>&1) || status=$?
+  ((status == 0)) || die "self-test: --bash-only did not pass on a machine without shfmt (got $status): $out"
+  case "$out" in
+    *"nothing that reads the script as a tree ran"*) ;;
+    *) die "self-test: --bash-only passed without saying the tree half was skipped: $out" ;;
+  esac
+fi
 
 c=$(copy nothing)
 printf '#!/usr/bin/env bash\necho hi\n' >"$c/script.sh"
@@ -1522,10 +1567,4 @@ c=$(copy claimed-gnu-mktemp)
 plant "$c" 'HERE=' 'x=$(mktem'"p -d -p /tmp)"
 expect_red "$c" "has: x=\$(mktem""p -d -p /tmp)" "a GNU mktemp flag under a 3.2 claim" -n script.sh "$c/script.sh"
 
-# A run that skipped the tree half says so on the line a caller reads, not only in the
-# flag it was given: a summary that looks like a full one is how a partial check gets
-# mistaken for a clean bill
-tree_note=""
-((bash_only == 0)) || tree_note="; --bash-only, so nothing that reads the script as a tree ran"
-printf 'check-sh: %s — %d subcommands, %d flags agree with the help; %d document(s), %s completions checked; %d planted defects caught%s\n' \
-  "$name" "${#subs[@]}" "${#flags[@]}" "$((${#docs[@]} + ${#mentions[@]}))" "$([[ -n "$comp_bash" ]] && echo 2 || echo 0)" "$planted" "$tree_note"
+printf 'check-sh: %s; %d planted defects caught\n' "$summary" "$planted"

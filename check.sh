@@ -48,7 +48,13 @@ fail() {
 # the shebang finds: on a macOS runner the gate is started as `/bin/bash ./check.sh` to
 # prove the checker on the 3.2 that macOS ships, while `env bash` finds whichever bash is
 # first on PATH — Homebrew's 5 on a Mac that has one.
-checker() { "$BASH" "$HERE/check-sh.sh" "$@"; }
+checker() {
+  # One place decides the mode, so no call can be left asking for a tree the runner proving
+  # the 3.2 claim does not have
+  local tree_flag=()
+  [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
+  "$BASH" "$HERE/check-sh.sh" ${tree_flag[@]+"${tree_flag[@]}"} "$@"
+}
 # The same copy under the same bash and tools proves itself once per run — the self-test is
 # 98% of a call, 3.8 s of 3.9 — so every call after the first that is not about the
 # self-test runs the checks alone, which is what CHECK_SH_NESTED=1 is documented for
@@ -69,7 +75,12 @@ case "$mode" in
 esac
 
 tools=()
-[[ "$mode" == behaviour ]] || tools+=(actionlint shellcheck shfmt zsh)
+[[ "$mode" == behaviour ]] || tools+=(actionlint shellcheck zsh)
+# Both modes run check-sh.sh, which reads the script it is given as a tree, so shfmt and
+# jq are this gate's tools too and not only the linters'. Under CHECK_BASH32 the runner is
+# the macOS image that carries the 3.2 the proof is about and has neither, and every call
+# there is made with --bash-only, which asks this bash and reads no tree
+[[ -n "${CHECK_BASH32:-}" ]] || tools+=(shfmt jq)
 missing=()
 for tool in "${tools[@]+"${tools[@]}"}"; do
   command -v "$tool" >/dev/null || missing+=("$tool")
@@ -329,7 +340,10 @@ check_behaviour() {
     local fragment="$1" what="$2" out
     FRAG="$fragment" awk 'index($0, ENVIRON["FRAG"]) { sub(/finding "/, ": \"") } { print }' check-sh.sh >"$work/neutered.sh"
     grep -qF -- "$fragment" "$work/neutered.sh" || fail "no line of check-sh.sh holds '$fragment' — the neutering matched nothing"
-    if out=$("$BASH" "$work/neutered.sh" templates/script.sh 2>&1); then
+    # A copy run directly, so it takes the mode the same way checker() hands it out
+    local tree_flag=()
+    [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
+    if out=$("$BASH" "$work/neutered.sh" ${tree_flag[@]+"${tree_flag[@]}"} templates/script.sh 2>&1); then
       fail "check-sh.sh with '$fragment' silenced passed its own self-test — the self-test does not prove that check"
     fi
     [[ "$out" == *"a copy with $what"*" passed"* ]] ||
@@ -363,14 +377,16 @@ check_behaviour() {
     ! "$BASH" -c 'declare -A m' >/dev/null 2>&1 || fail "CHECK_BASH32 is set, but this bash accepts declare -A"
     awk '{ print } /^set -euo pipefail$/ && !done { print "declare -A check_sh_probe || exit 70"; done = 1 }' check-sh.sh >"$work/probe.sh"
     status=0
-    "$BASH" "$work/probe.sh" templates/script.sh >/dev/null 2>&1 || status=$?
+    # --bash-only on both probes below: they are copies of check-sh.sh run directly rather
+    # than through checker(), and this runner has no shfmt for them to read a tree with
+    "$BASH" "$work/probe.sh" --bash-only templates/script.sh >/dev/null 2>&1 || status=$?
     ((status == 70)) || fail "a checker that declares an associative array ran under this bash (got $status) — this is not a 3.2"
     # mapfile does not exist here, so a checker reading its flags with it dies on the spot
     # under set -e — the class of regression only this bash catches, since a newer one
     # runs the same line without a word
     sed 's/^  while IFS= read -r line; do$/  mapfile -t flags < <(cat); while false; do/' check-sh.sh >"$work/mapfile.sh"
     grep -q 'mapfile -t flags' "$work/mapfile.sh" || fail "the mapfile plant did not land in check-sh.sh"
-    out=$("$BASH" "$work/mapfile.sh" templates/script.sh 2>&1) && fail "a checker reading its flags with mapfile passed under this bash"
+    out=$("$BASH" "$work/mapfile.sh" --bash-only templates/script.sh 2>&1) && fail "a checker reading its flags with mapfile passed under this bash"
     [[ "$out" == *"mapfile: command not found"* ]] || fail "the mapfile plant failed for a reason other than mapfile being absent: $out"
   fi
 }
