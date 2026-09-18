@@ -868,9 +868,11 @@ ROWS
 # What `POSIX tools only` covers, so that anything else a script calls has to be named in
 # the header beside the claim. It is what the claim promises rather than what POSIX.1
 # tabulates: a utility both a GNU and a BSD userland ship, which is the portability the
-# claim is about. `mktemp` is the case that decides between the two readings — POSIX.1
-# does not list it, every userland this family targets has it, and portability.md already
-# rules on it by ruling on which of its flags differ. A name missing here is a finding
+# claim is about. `mktemp` is the case that decides between the two readings: POSIX.1-2017
+# does not list it — its utility index goes from `mkfifo` straight to `more`
+# (https://pubs.opengroup.org/onlinepubs/9699919799/idx/utilities.html) — while every
+# userland this family targets has it, and portability.md already treats it as present by
+# ruling on which of its flags differ. A name missing here is a finding
 # asking for one word in a header, which is cheap; a name wrongly here is a claim nobody
 # checks
 posix_utilities() {
