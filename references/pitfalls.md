@@ -266,6 +266,18 @@ $ for n in 2000 8000; do
 
 **shellcheck sees every local in a file at once**, so a name used as an array in one function and as a scalar in another is a mistake to it, and the warning points at the *other* use, which is why it reads as unrelated. Pick names nothing else in the file uses, and run `shellcheck` before running anything else ([lint.md](lint.md))
 
+**A comment whose text opens with `shellcheck` is read as a directive to shellcheck, so where the word sits on the line decides whether the file lints.** Prose that names the tool is ordinary prose until a rewrap moves the word to the front, and the error then names a directive nobody wrote. It cost a green gate here when one word was added to a header paragraph and the line below reflowed:
+
+```console
+$ printf '#!/usr/bin/env bash\n# one two, shellcheck,\n# shfmt and nix\ntrue\n' >a.sh
+$ printf '#!/usr/bin/env bash\n# shellcheck, shfmt and nix\ntrue\n' >b.sh
+$ shellcheck a.sh; echo "a=$?"; shellcheck b.sh >/dev/null 2>&1; echo "b=$?"
+a=0
+b=1
+```
+
+`b.sh` answers `SC1073 (error): Couldn't parse this shellcheck directive` followed by `SC1072`, and both are errors rather than warnings, so the run stops there. A second space after the `#` does not save it. Keep the word away from the front of a comment line, or write it as `` `shellcheck` ``, which the same probe reports clean — and a backtick around a tool's name is what the comment rules ask for anyway
+
 **Judge `grep` by what it says, not by its status.** A regex `grep` cannot compile is not a uniform failure: GNU and BSD `grep` exit 2, busybox's does not compile it until there is a line to match, and all of them complain on stderr once it does. A broken exclusion regex can leave the filtered log empty, making a later scan report no findings. Feed the probe a line of input rather than `/dev/null`, capture stderr, and treat a complaint as the answer
 
 **An undefined `awk` escape is noise, not necessarily a difference.** `\ ` for a space is undefined by POSIX, but gawk, mawk, busybox awk, goawk and the one-true-awk macOS ships all read it as a space. Fix it for the warning, and do not invent a portability story that measurement does not support — the same discipline that keeps the bash floor honest in [portability.md](portability.md). **An `exit N` inside an `awk` program is awk's status, not the script's**, which is why `check-sh.sh` counts only bash-shaped ones — `exit N` followed by `;`, end of line, `&&` or `||` — and leaves `{ exit 1 }` alone
