@@ -315,7 +315,8 @@ check_behaviour() {
     # check-sh.sh proves its checks on a planted copy every run. This is the proof of that
     # proof: a copy of the checker with one finding neutered must fail its own self-test,
     # and for that check's reason. Otherwise the self-test could be passing on nothing
-    neutered() { # neutered FRAGMENT WHAT -> a copy whose finding holding FRAGMENT is silenced must go red for WHAT
+    # neutered FRAGMENT WHAT -> a copy with the finding holding FRAGMENT silenced goes red for WHAT
+    neutered() {
       local fragment="$1" what="$2" out
       FRAG="$fragment" awk 'index($0, ENVIRON["FRAG"]) { sub(/finding "/, ": \"") } { print }' check-sh.sh >"$work/neutered.sh"
       grep -qF -- "$fragment" "$work/neutered.sh" || fail "no line of check-sh.sh holds '$fragment' — the neutering matched nothing"

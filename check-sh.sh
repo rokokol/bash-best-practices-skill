@@ -803,7 +803,7 @@ proxy_only=0
   fi
 }
 
-known_sub() { # known_sub WORD -> 0 when the dispatcher has it, or it is the help, or the set is open
+known_sub() { # known_sub WORD -> 0 when the dispatcher has it, or it is help, or the set is open
   local s
   [[ "$1" != help ]] || return 0
   ((open_set == 0)) || return 0
