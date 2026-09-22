@@ -2,6 +2,13 @@
 
 Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), dated rather than numbered, and with no `Unreleased` section — a skill is read at whatever revision you have checked out, so whatever is on the default branch is what everyone already has, and a section for work that has landed but not shipped would never close. The rule lives in the [versioning](https://github.com/rokokol/versioning-skill) skill, which owns what has no version
 
+## 2026-09-23
+
+### Added
+
+- `check-comments.allow` at the root excuses a rejected parse under `tests/fixtures/`, where `bash4-constructs.sh` is tab-separated data that `check-sh.sh` reads rather than a script anyone runs, and holds the constructs on purpose
+- `references/pitfalls.md` records that a backslash inside a double-quoted `${x:+word}` stays literal, measured on bash 5.3 and bash 3.2 alike. Escaping is the reflex when a tool refuses the bare character, and it silences the tool while the string quietly grows a backslash; closing the quotes around the character alone keeps the value
+
 ## 2026-09-22
 
 ### Added

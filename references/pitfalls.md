@@ -232,6 +232,17 @@ exit=1
 
 **Deciding interactivity by `[[ -t 0 ]]` hangs the script under a pty.** `ssh -t`, an expect wrapper and every terminal multiplexer hand a script a tty on stdin with nobody there to type, and a script that takes that for a person reaches `read -rp` and waits forever. **A non-interactive run is declared, not detected**: a flag or an environment variable turns the prompts off, `[[ -t 0 ]]` may only *add* a prompt that already has a default, and a caller that wants none passes `</dev/null` as well
 
+**A backslash inside a double-quoted `${x:+word}` stays literal, so escaping a character there changes the value rather than protecting it.** The word of `:+`, `:-` and `:=` is already inside the quotes, and bash keeps a backslash that precedes anything but `$`, `` ` ``, `"`, `\` or a newline. The reflex costs a session when a tool refuses the bare character — tree-sitter's bash grammar rejects a bare `|`, `&`, `;` or `>` there, which is [tree-sitter-bash#267](https://github.com/tree-sitter/tree-sitter-bash/issues/267) — because the escape silences the tool and the string quietly grows a backslash. Closing the quotes around the character alone is what keeps the value:
+
+```console
+$ bash -c 'p=A; q=B; printf "bare   %s\n" "${p:+$p|}$q"; printf "esc    %s\n" "${p:+$p\|}$q"; printf "quoted %s\n" "${p:+$p"|"}$q"'
+bare   A|B
+esc    A\|B
+quoted A|B
+```
+
+The same three lines print the same three answers under `bash:3.2`. A workaround for a parser is measured against the shell, never against the parser that asked for it
+
 **Every removal pattern costs the square of the string's length, the anchored one too.** `${t#*needle}` and `${t%%needle*}` both try the pattern at each position against the rest of the string, so four times the text costs sixteen times as much; the suffix form only has the smaller constant, which one timing at one size reads as a different order. A containment test stays linear:
 
 ```console

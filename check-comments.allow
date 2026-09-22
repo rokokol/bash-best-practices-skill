@@ -1,0 +1,5 @@
+# One entry per line: ID PATH [TEXT]. See check-comments.sh --help
+
+# bash4-constructs.sh carries a floor and a construct per tab-separated line: it is data
+# that check-sh.sh reads, never a script anyone runs, and it holds the constructs on purpose
+unparsed tests/fixtures/
