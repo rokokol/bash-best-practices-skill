@@ -27,14 +27,21 @@ The second truth is the machine the script runs on. These utilities travel to ma
 
 ## Install
 
-```sh
-git clone https://github.com/rokokol/bash-best-practices-skill ~/Projects/bash-best-practices
-ln -s ~/Projects/bash-best-practices ~/.claude/skills/bash-best-practices
+```bash
+npx skills add -g rokokol/bash-best-practices-skill    # for you, everywhere
+npx skills add rokokol/bash-best-practices-skill       # for the project you are standing in
 ```
 
-Or straight into the skills directory your agent reads:
+Claude Code also takes it as a plugin:
 
-```sh
+```
+/plugin marketplace add rokokol/skills
+/plugin install bash-best-practices@rokokol-skills
+```
+
+or by hand — clone into whichever skills directory your agent reads:
+
+```bash
 git clone https://github.com/rokokol/bash-best-practices-skill ~/.claude/skills/bash-best-practices
 ```
 
