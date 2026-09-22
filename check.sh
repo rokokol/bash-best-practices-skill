@@ -3,7 +3,7 @@
 # repositories
 # Needs bash 3.2 and POSIX tools only for its own code, so behaviour mode runs unchanged
 # under the bash a macOS runner has; the lint half calls actionlint, shellcheck, shfmt,
-# zsh and nix, which come from the flake's dev shell and never from the runner's PATH
+# nixfmt, zsh and nix, which come from the flake's dev shell and never from the runner's PATH
 set -euo pipefail
 
 usage() {
@@ -172,6 +172,13 @@ check_lint() {
     fail "the flake claims a system it cannot be evaluated for: $(sed 's/^ *//' "$work/flake.err" | grep -m 1 -E 'error: .+' || tail -1 "$work/flake.err")"
   [[ "$flake_systems" == *x86_64-linux* ]] ||
     fail "the flake does not offer a dev shell on x86_64-linux, which is what CI runs the gate on"
+
+  echo "== the Nix this repository holds is formatted"
+  # A `formatter` output nothing runs is a declaration, not a rule: this repository declared
+  # nixfmt-tree and never asked whether a file obeyed it. nixfmt rather than `nix fmt`,
+  # because the second needs the flake and this is the same binary the wrapper calls
+  nixfmt --check ./*.nix ||
+    fail "a .nix file here is not what nixfmt writes — run nix fmt"
 
   echo "== no paragraph in the docs is hard-wrapped or ends on a full stop"
   # GitHub soft-wraps, so a manual break means a one-word edit reflows every line after

@@ -6,7 +6,7 @@
   outputs =
     { nixpkgs, ... }:
     let
-      lib = nixpkgs.lib;
+      inherit (nixpkgs) lib;
       # Darwin too: the checker travels to repositories that run CI on macOS, and a
       # contributor there gets `nix develop -c ./check.sh` rather than a flake that does
       # not know their system. Apple silicon only — nixpkgs 26.11 dropped x86_64-darwin,
@@ -31,6 +31,9 @@
             # tree into the rows its rules read. It lands first, and in every consumer,
             # so the checker finds it already present when the cascade brings it
             jq
+            # The same binary the formatter output wraps with treefmt. The gate calls it
+            # directly, because `nix fmt` needs the flake and a check should not
+            nixfmt
             shellcheck
             shfmt
             # zsh is not shellcheck's language; `zsh -n` is what can be checked on the
