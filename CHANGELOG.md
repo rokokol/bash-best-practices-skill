@@ -7,6 +7,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 ### Added
 
 - `check-comments.allow` at the root excuses a rejected parse under `tests/fixtures/`, where `bash4-constructs.sh` is tab-separated data that `check-sh.sh` reads rather than a script anyone runs, and holds the constructs on purpose
+- `references/pitfalls.md` records that a command substitution anywhere on the line overwrites `$?` before the line reads it, so a probe printing a name and a status in one `printf` reports the name's status and says everything passed. It belongs beside `| tail` and `| tee`: all three stand between a command and its verdict
 - `references/pitfalls.md` records that a comment whose text opens with `shellcheck` is read as a directive, so a rewrap that moves the word to the front of a line turns a lint run red with `SC1073` on a directive nobody wrote. A second space does not save it and a backtick does
 - `references/pitfalls.md` records that a backslash inside a double-quoted `${x:+word}` stays literal, measured on bash 5.3 and bash 3.2 alike. Escaping is the reflex when a tool refuses the bare character, and it silences the tool while the string quietly grows a backslash; closing the quotes around the character alone keeps the value
 

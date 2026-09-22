@@ -219,6 +219,16 @@ exit=1
 
 `docker run --rm -v "$PWD":/w -w /w bash:3.2 bash q.sh one` answers identically, so this is not a version to grow out of. **The guard is `(($# >= 2)) || die "usage: …"`**, with `die` printing to stderr and exiting 2 — the codes and the helpers are in [shape.md](shape.md), the text the help must carry in [help.md](help.md). No literal `exit` gives it away, so `check-sh.sh` reports every `${N:?}` outside a comment
 
+**A command substitution anywhere on the line overwrites `$?` before the line reads it.** The substitution is a command and it runs during expansion, so a probe that prints a name and a status in one `printf` reports the name's status and never the one it was written to show. It reads as "everything passes", which is the worst way for a check to be wrong:
+
+```console
+$ bash -c 'false; printf "sub in the line  %s rc=%s\n" "$(printf x)" "$?"; false; rc=$?; printf "saved first      %s rc=%s\n" "$(printf x)" "$rc"'
+sub in the line  x rc=0
+saved first      x rc=1
+```
+
+The same on bash 3.2. Save the status into a variable on its own line before anything else expands, which is the same rule as [verdict](https://github.com/rokokol/tests-skill) asks for around a pipe — `| tail`, `| tee` and a substitution all stand between a command and its verdict
+
 **`cmd && action` as the last command of a function ends a `set -e` script in silence.** `set -e` ignores a failure on the left of `&&`, so at the top level a `grep` that finds nothing just moves on. As a function's last command the same line's status is the function's, and the call is a plain command that `set -e` does act on:
 
 ```console
