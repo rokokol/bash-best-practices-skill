@@ -45,15 +45,21 @@ fail() {
   exit 1
 }
 
+# Whether check-sh.sh can read a script as a tree here, which is the one thing --bash-only
+# is about. Both calls below ask this, and nothing asks which machine it is running on
+tools_for_a_tree() { command -v shfmt >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; }
+
 # Every check-sh.sh below runs under the bash running this gate, not under whatever bash
 # the shebang finds: on a macOS runner the gate is started as `/bin/bash ./check.sh` to
 # prove the checker on the 3.2 that macOS ships, while `env bash` finds whichever bash is
 # first on PATH — Homebrew's 5 on a Mac that has one.
 checker() {
-  # One place decides the mode, so no call can be left asking for a tree the runner proving
-  # the 3.2 claim does not have
+  # One place decides the mode, so no call can be left asking for a tree the runner does not
+  # have. The question is the tools rather than the machine: check-sh.sh reads a tree through
+  # shfmt and jq, a macOS image carries neither, and neither does a job that runs the
+  # behaviour half alone. Asked of the tools, a Mac that has them gets the whole check
   local tree_flag=()
-  [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
+  tools_for_a_tree || tree_flag=(--bash-only)
   "$BASH" "$HERE/check-sh.sh" ${tree_flag[@]+"${tree_flag[@]}"} "$@"
 }
 # The same copy under the same bash and tools proves itself once per run — the self-test is
@@ -340,7 +346,7 @@ check_behaviour() {
       grep -qF -- "$fragment" "$work/neutered.sh" || fail "no line of check-sh.sh holds '$fragment' — the neutering matched nothing"
       # A copy run directly, so it takes the mode the same way checker() hands it out
       local tree_flag=()
-      [[ -z "${CHECK_BASH32:-}" ]] || tree_flag=(--bash-only)
+      tools_for_a_tree || tree_flag=(--bash-only)
       if out=$("$BASH" "$work/neutered.sh" ${tree_flag[@]+"${tree_flag[@]}"} templates/script.sh 2>&1); then
         fail "check-sh.sh with '$fragment' silenced passed its own self-test — the self-test does not prove that check"
       fi
