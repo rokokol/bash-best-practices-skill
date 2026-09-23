@@ -227,7 +227,7 @@ sub in the line  x rc=0
 saved first      x rc=1
 ```
 
-The same on bash 3.2. Save the status into a variable on its own line before anything else expands, which is the same rule as [verdict](https://github.com/rokokol/tests-skill) asks for around a pipe — `| tail`, `| tee` and a substitution all stand between a command and its verdict
+The same on bash 3.2. Save the status into a variable on its own line before anything else expands: a substitution stands between a command and its verdict exactly as `| tail` and `| tee` do
 
 **`cmd && action` as the last command of a function ends a `set -e` script in silence.** `set -e` ignores a failure on the left of `&&`, so at the top level a `grep` that finds nothing just moves on. As a function's last command the same line's status is the function's, and the call is a plain command that `set -e` does act on:
 
