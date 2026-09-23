@@ -142,7 +142,7 @@ How often the second write loses the race is a matter of scheduling, so a short 
 
 **A producer that is not the shell writes in blocks, not in lines, and that moves the threshold rather than removing it.** GNU `cat` fills a 128 KiB buffer per `write()`, so it usually finishes before the reader can exit: `cat FILE | head -n1` under `pipefail` survived 200 of 200 runs at every size up to 384 KB, went to 33 of 200 at 512 KB, and failed 200 of 200 from 1 MB up, on glibc with a 64 KiB pipe. The pipe buffer is not the boundary — what decides is how many `write()` calls the producer still owes when the reader goes. So neither a small text nor a fast tool is a defence, and "this one is not a shell builtin" is not a reason to leave the pipeline standing
 
-A 50 ms delay in the place the scheduler occupies makes it certain, and shows the two directions the mistake takes: `! … | grep -q` reports a finding that is not there, and `… | grep -q || flag=1` silently switches a check off:
+A 50 ms delay in the place the scheduler occupies makes it certain, and shows the directions the mistake takes: `! … | grep -q` reports a finding that is not there, `… | grep -q || flag=1` silently switches a check off, and `x=$(… | awk '…{ exit }')` answers a caller that reads failure as emptiness with "the file says nothing" about a file the pipeline read correctly:
 
 ```console
 $ bash -c 'set -o pipefail; { printf "%s\n" "$text"; sleep 0.05; printf "x\n"; } | grep -q "help)"; echo "status=$?"'
@@ -151,7 +151,7 @@ $ bash -c 'set -o pipefail; v=$text; grep -q "help)" <<<"$v"; echo "status=$?"'
 status=0
 ```
 
-**Give the text to the reader with `<<<`**, which is a temporary file and has no producer to kill, and where a pipeline must stay, let the consumer read to the end — `sed -n 1p` rather than `head -1`, `!seen { … seen = 1 }` rather than `awk … exit`. Measured in the wild: one macOS CI run in about 180 across six repositories rejected a script its own self-test had just written, and the run after it passed on the same bytes
+**Give the text to the reader with `<<<`**, which is a temporary file and has no producer to kill, and where a pipeline must stay, let the consumer read to the end — `sed -n 1p` rather than `head -1`, `!seen { … seen = 1 }` rather than `awk … exit`. Measured in the wild: one macOS CI run in about 180 across six repositories rejected a script its own self-test had just written, and the run after it passed on the same bytes. A second reading, `curl … | awk '/^name:/ { print; exit }'` over seventeen repositories, came back empty for eleven and correct for six, the split decided by file size alone — every one of the seventeen carried the frontmatter the awk was looking for, and the caller called eleven of them unreadable
 
 ## The interpreter
 

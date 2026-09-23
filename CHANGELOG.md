@@ -10,6 +10,7 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 - `references/pitfalls.md` records that a command substitution anywhere on the line overwrites `$?` before the line reads it, so a probe printing a name and a status in one `printf` reports the name's status and says everything passed. It belongs beside `| tail` and `| tee`: all three stand between a command and its verdict
 - `references/pitfalls.md` records that a comment whose text opens with `shellcheck` is read as a directive, so a rewrap that moves the word to the front of a line turns a lint run red with `SC1073` on a directive nobody wrote. A second space does not save it and a backtick does
 - `references/pitfalls.md` records that a backslash inside a double-quoted `${x:+word}` stays literal, measured on bash 5.3 and bash 3.2 alike. Escaping is the reflex when a tool refuses the bare character, and it silences the tool while the string quietly grows a backslash; closing the quotes around the character alone keeps the value
+- `references/pitfalls.md` names a further direction the SIGPIPE race takes, beside the finding that is not there and the check switched off: `x=$(producer | reader)` answers a caller that reads failure as emptiness with "the file says nothing" about a file the pipeline read correctly. Measured on `curl … | awk '/^name:/ { print; exit }'` over seventeen repositories, of which eleven came back empty and six correct, the split decided by file size alone
 
 ### Fixed
 
