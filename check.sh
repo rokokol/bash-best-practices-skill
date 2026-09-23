@@ -311,12 +311,16 @@ check_behaviour() {
   refuses "-m with no document" "-m needs a document" templates/script.sh -m
   refuses "-c with one file" "-c needs two files" templates/script.sh -c templates/completions/script.sh.bash
   refuses "a document it cannot read" "cannot read" -d "$work/not-a-doc.md" templates/script.sh
-  # Not under CHECK_BASH32: there every call is --bash-only, where an empty subcommand and
-  # flag list is what the mode produces rather than what the script holds, so the checker
-  # does not make that refusal and asking for it here would be asking for a lie
-  [[ -n "${CHECK_BASH32:-}" ]] ||
+  # Neither under CHECK_BASH32: there every call is --bash-only, where an empty subcommand
+  # and flag list is what the mode produces rather than what the script holds, so the
+  # checker does not make either refusal and asking for it here would be asking for a lie.
+  # The second one is why it does not: without a tree the mode cannot tell a script with a
+  # dispatcher from a list of defects meant to be sourced, and reading the help means
+  # running the file. The Linux runner carries both, with the tree to decide them
+  if [[ -z "${CHECK_BASH32:-}" ]]; then
     refuses "a script with nothing to check" "nothing to check" tests/fixtures/nothing-to-check.sh
-  refuses "a script whose --help fails" "--help exited 1" tests/fixtures/help-fails.sh
+    refuses "a script whose --help fails" "--help exited 1" tests/fixtures/help-fails.sh
+  fi
   refuses "an unknown flag" "check-sh.sh [-n NAME]" --bogus templates/script.sh
   refuses "an unknown template" "no such template" --template nope
 

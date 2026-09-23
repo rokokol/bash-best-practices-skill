@@ -11,6 +11,10 @@ Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), d
 - `references/pitfalls.md` records that a comment whose text opens with `shellcheck` is read as a directive, so a rewrap that moves the word to the front of a line turns a lint run red with `SC1073` on a directive nobody wrote. A second space does not save it and a backtick does
 - `references/pitfalls.md` records that a backslash inside a double-quoted `${x:+word}` stays literal, measured on bash 5.3 and bash 3.2 alike. Escaping is the reflex when a tool refuses the bare character, and it silences the tool while the string quietly grows a backslash; closing the quotes around the character alone keeps the value
 
+### Fixed
+
+- `check-sh.sh --bash-only` no longer runs the script to read its help. Without a tree the mode cannot tell a script with a dispatcher from a list meant to be sourced, and running the second one executes every line of it: a defect list answered `127` and printed a `command not found` per entry. The mode is the proxy alone now, as its own help says, so the checks that hold a help to the code stay with the runner that can read the code
+
 ## 2026-09-22
 
 ### Added
