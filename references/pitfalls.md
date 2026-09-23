@@ -274,6 +274,16 @@ $ for n in 2000 8000; do
 
 ## The tools around it
 
+**A check takes its file list from something that exists everywhere the check runs, or it answers "nothing wrong" where the list came out empty.** `git ls-files` is the tempting source and it fails two ways at once. A gate that copies the tree into a scratch directory and runs itself there meets no `.git`, so the list is empty and every file passes; and `git` is not in the POSIX userland a header promising `POSIX tools only` is held to, so the same line turns the checker on the gate red. Both showed up on one edit, in two repositories, on the same afternoon:
+
+```console
+$ cd "$(mktemp -d)" && cp -r ~/some-repo/. . && rm -rf .git
+$ git ls-files -- '*.nix' | wc -l
+0
+```
+
+`find . -name '*.nix' -type f -not -path '*/.git/*'` answers in both places and breaks neither promise. The general shape is worth more than the instance: **ask the question the verdict rests on, not the one a tool answers most readily** — an empty list, a missing tool and a file nothing tracks all read exactly like a clean run, which is the answer everybody wants to hear
+
 **shellcheck sees every local in a file at once**, so a name used as an array in one function and as a scalar in another is a mistake to it, and the warning points at the *other* use, which is why it reads as unrelated. Pick names nothing else in the file uses, and run `shellcheck` before running anything else ([lint.md](lint.md))
 
 **A comment whose text opens with `shellcheck` is read as a directive to shellcheck, so where the word sits on the line decides whether the file lints.** Prose that names the tool is ordinary prose until a rewrap moves the word to the front, and the error then names a directive nobody wrote. It cost a green gate here when one word was added to a header paragraph and the line below reflowed:
