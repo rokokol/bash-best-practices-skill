@@ -2,6 +2,13 @@
 
 Kept in the shape of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), dated rather than numbered, and with no `Unreleased` section — a skill is read at whatever revision you have checked out, so whatever is on the default branch is what everyone already has, and a section for work that has landed but not shipped would never close. The rule lives in the [versioning](https://github.com/rokokol/versioning-skill) skill, which owns what has no version
 
+## 2026-10-03
+
+### Added
+
+- `check-sh.sh` reports a letter range such as `[a-z]` or `[A-Z]` in a `case` pattern, or on the right of `==`, `=` or `!=` inside `[[ ]]`, in a script that claims a bash older than 5.0. Such a bash matches the range in the locale's collation order, and en_US.UTF-8, which the GitHub macOS runner sets, puts `H` inside `[a-z]`. A quoted pattern, a regex after `=~` and the arguments of `tr`, `grep` or `sed` are not reported
+- `references/portability.md` describes that trap, with the measurement and the replacement: a class such as `[[:lower:]]`, or `LC_ALL=C` assigned in the script where only ASCII is correct
+
 ## 2026-09-23
 
 ### Added

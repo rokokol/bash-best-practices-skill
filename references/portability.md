@@ -56,6 +56,21 @@ a&lt;b
 
 Escaping `&` as `\&` fixes the 5.2 interpretation and breaks 3.2 — `docker run --rm bash:3.2 bash -c 's="a<b"; echo "${s//</\&lt;}"'` prints `a\&lt;b` — so `\&` is not a portable fix, it is a declaration of a 5.2 floor. **The portable edit cuts around the occurrence instead**, which has neither problem and is identical on both: `bash -c 'c="a b c"; f="b"; rep="X&Y"; printf "%s\n" "${c%%"$f"*}$rep${c#*"$f"}"'` prints `a X&Y c` under 5.3 and under 3.2 alike
 
+**A letter range in a glob follows the locale's collation before bash 5.0.** This holds for a `case` pattern, the right side of `==`, `=` or `!=` inside `[[ ]]`, and every other glob. Bash 3.2 compares a character with the ends of `[a-z]` through `strcoll`. en_US.UTF-8 sorts letters as a dictionary does, `a A b B … z Z`, so `H` is inside `[a-z]` and `Z` is outside it. The GitHub macOS runner exports that locale in its bashrc. Bash 4.3 added `globasciiranges`, and 5.0 turned it on, so a 5.x bash with the option off shows the 3.2 order:
+
+```console
+$ LC_ALL=en_US.UTF-8 bash -c 'shopt -u globasciiranges; for c in a H Z; do case $c in [a-z]) echo "$c in";; *) echo "$c out";; esac; done'
+a in
+H in
+Z out
+$ LC_ALL=en_US.UTF-8 bash -c 'shopt -u globasciiranges; case H in [[:lower:]]) echo in;; *) echo out;; esac'
+out
+$ LC_ALL=en_US.UTF-8 bash -c 'shopt -u globasciiranges; LC_COLLATE=C; case H in [a-z]) echo in;; *) echo out;; esac'
+in
+```
+
+**Write the class, not the range: `[[:lower:]]`, `[[:upper:]]`, `[[:alpha:]]`, `[[:digit:]]`.** A class names the set, so no collation order can move its ends. In a UTF-8 locale it also holds non-ASCII letters, `é` in `[[:lower:]]` among them. Where only ASCII is correct, assign `LC_ALL=C` in the script before the match. `LC_COLLATE=C` alone changes nothing while an `LC_ALL` is set, as the last run shows. The `bash:3.2` image does not show this defect: musl's `strcoll` is `strcmp`, so its ranges are ASCII in every locale. A regex after `=~` and the arguments of `tr`, `grep` and `sed` follow their own library's rules, not bash's glob
+
 **A heredoc inside `$( )` or `<( )` is read as code by 3.2, and `bash -n` passes it.** Before 4.0 the parser finds the end of the substitution by scanning the heredoc's body, so an unpaired `)` there ends the substitution early and the value quietly takes in the rest, while an unpaired `'` is a syntax error. With `p.sh` holding `x="$(`, `cat <<'EOF'`, `a ) b`, `EOF`, `)"` and `printf "[%s]\n" "$x"` on six lines:
 
 ```console
@@ -89,6 +104,7 @@ The idiom opens the substitution on the line before the heredoc, so no one-line 
 | `local -n`, `declare -n` | bash 4.3 | bash's dynamic scoping — a callee reads the caller's locals |
 | `wait -n` | bash 4.3 | `wait` for the whole batch and read each job's status from a file |
 | `${x@Q}` | bash 4.4 | `printf %q` |
+| `[a-z]` in a `case` pattern or after `==` in `[[ ]]` | 3.2 and 5.0 differ | `[[:lower:]]`, `[[:upper:]]`, `[[:alpha:]]`, `[[:digit:]]` |
 | `${x//"$a"/"$b"}`, `&` in a replacement | 3.2 and 5.2 differ | `${x%%"$a"*}$b${x#*"$a"}` |
 | `readlink -f` | GNU; macOS only from 12.3 | a `while [[ -L ]]` loop over plain `readlink` |
 | `mktemp -p`, `--suffix`, `-t` | differ | `mktemp -d "${TMPDIR:-/tmp}/NAME.XXXXXX"` — an explicit template, see the correction below |

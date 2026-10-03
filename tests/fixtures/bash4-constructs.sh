@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One construct per line that a bash older than the floor in the first column does not
-# have, or that a BSD userland reads another way. The columns are separated by a tab:
+# have or reads another way, or that a BSD userland reads another way. The columns are
+# separated by a tab:
 # a floor as bash's NEWS gives it (400 is 4.0, 502 is 5.2), or `bsd` for a userland flag
 # that is GNU-only or spelled differently there. check-sh.sh's proxy must catch every row
 # in a script whose claim is below that floor, and must stay quiet in one that declares it.
@@ -24,6 +25,10 @@
 404	echo "${name@Q}"
 502	echo "${name//"$a"/"$b"}"
 502	echo "${name//</&lt;}"
+500	case "$x" in [a-z]*) ;; esac
+500	[[ $x == [A-Z]* ]]
+500	[[ $x != *[!a-zA-Z0-9]* ]]
+500	[[ $x == +([[:digit:]a-f]) ]]
 bsd	sort -rV
 bsd	grep -P '\d'
 bsd	readlink -f "$0"
