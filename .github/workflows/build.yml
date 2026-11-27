@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@v32
       # The pin guard lives in check-pins.sh, run by the gate, and nowhere else: a second
       # copy of the pattern here would drift from the one there
       - name: check.sh (the gate, self-tested against known-bad inputs)
